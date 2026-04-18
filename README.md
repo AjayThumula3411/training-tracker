@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Training Tracker
 
 Training Tracker is a full-stack internal operations app for onboarding and training management. It combines a `Next.js` frontend with an `Express` + `Prisma` backend and supports role-based workflows for HR, team leads, and developers.
@@ -96,3 +97,7 @@ Apply Prisma migrations from `backend/` before running the app against a fresh d
 - Protected dashboard pages rely on the auth cookie issued after OTP verification.
 - Profile directory access is intended for HR and team leads.
 - Individual profile editing is restricted to the profile owner and HR.
+=======
+# training-tracker
+Role-based training tracker using Next.js, Node.js, PostgreSQL
+>>>>>>> f8bf9dbd7f405ade3e1dbe401a722f011e268416
