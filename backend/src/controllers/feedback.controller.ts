@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { FeedbackType, Role } from "@prisma/client";
+import { FeedbackType, NotificationType, Role } from "@prisma/client";
 import prisma from "../prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 import { createAuditLog, createNotification } from "../utils/activity";
@@ -76,12 +76,20 @@ export const giveFeedback = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    await createNotification(developerId, `New ${normalizedType.toLowerCase()} feedback added`);
+    if (normalizedType === FeedbackType.EXTERNAL) {
+      await createNotification(developerId, "New external feedback added", NotificationType.EXTERNAL_FEEDBACK_ADDED);
+    }
 
-    await createAuditLog("FEEDBACK_ADDED", "Feedback", user.id, feedback.id, {
-      developerId,
-      type: normalizedType,
-    });
+    await createAuditLog(
+      "FEEDBACK_ADDED",
+      user.id,
+      feedback.id,
+      {
+        developerId,
+        type: normalizedType,
+      },
+      "Feedback"
+    );
 
     res.status(201).json(feedback);
   } catch {
@@ -124,6 +132,10 @@ export const getFeedbackByDeveloper = async (req: AuthRequest, res: Response) =>
 
     const { developerId } = req.params;
     const canViewInternal = req.user.role === Role.HR || req.user.role === Role.TEAM_LEAD;
+
+    if (!canViewInternal && req.user.id !== developerId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
 
     const feedbacks = await prisma.feedback.findMany({
       where: {
@@ -190,10 +202,16 @@ export const updateFeedback = async (req: AuthRequest, res: Response) => {
         },
       });
 
-    await createAuditLog("FEEDBACK_UPDATED", "Feedback", req.user.id, id, {
-      fromType: existingFeedback.type,
-      toType: normalizedType,
-    });
+    await createAuditLog(
+      "FEEDBACK_UPDATED",
+      req.user.id,
+      id,
+      {
+        fromType: existingFeedback.type,
+        toType: normalizedType,
+      },
+      "Feedback"
+    );
 
     res.json(updatedFeedback);
   } catch {
@@ -233,10 +251,16 @@ export const deleteFeedback = async (req: AuthRequest, res: Response) => {
       where: { id },
     });
 
-    await createAuditLog("FEEDBACK_DELETED", "Feedback", req.user.id, id, {
-      developerId: existingFeedback.developerId,
-      type: existingFeedback.type,
-    });
+    await createAuditLog(
+      "FEEDBACK_DELETED",
+      req.user.id,
+      id,
+      {
+        developerId: existingFeedback.developerId,
+        type: existingFeedback.type,
+      },
+      "Feedback"
+    );
 
     res.json({ message: "Feedback deleted successfully" });
   } catch {

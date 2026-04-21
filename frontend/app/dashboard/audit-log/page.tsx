@@ -123,13 +123,13 @@ export default function AuditLogPage() {
                   </div>
                   <p className="mt-3 text-sm font-medium text-slate-800">
                     {log.entity}
-                    {log.entityId ? ` (${log.entityId.slice(0, 8)})` : ""}
+                    {log.targetId ? ` (${log.targetId.slice(0, 8)})` : ""}
                   </p>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">{renderDetails(log.details)}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">{renderDetails(log.metadata)}</p>
                 </div>
 
                 <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                  Actor: {log.actorId.slice(0, 8)}
+                  User: {log.performer?.name || log.performedBy?.slice(0, 8) || "Unknown"}
                 </div>
               </div>
             </article>

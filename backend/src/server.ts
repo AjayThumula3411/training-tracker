@@ -1,7 +1,13 @@
-import express from "express";           // create server
+import path from "path";
 import dotenv from "dotenv";             // load .env variables
+import express from "express";           // create server
 import cors from "cors";                 // allow frontend to connect
 import cookieParser from "cookie-parser"; // read cookies from browser
+
+dotenv.config({
+  path: path.resolve(__dirname, "../.env"),
+  override: true,
+});
 
 // 🔹 ROUTES
 import authRoutes from "./routes/auth.routes";
@@ -17,8 +23,6 @@ import auditRoutes from "./routes/audit.routes";
 import { authenticate, AuthRequest } from "./middleware/auth.middleware";
 import { authorizeRoles } from "./middleware/rbac.middleware";
 
-dotenv.config(); // load environment variables
-
 const app = express(); // create express app
 
 // ================= MIDDLEWARES =================
@@ -30,10 +34,11 @@ app.use(cors({
 }));
 
 // ✅ Parse JSON request body
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 // ✅ Parse cookies (REQUIRED for auth)
 app.use(cookieParser());
+app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 
 // ================= ROUTES =================
 

@@ -58,19 +58,14 @@ export default function TasksPage() {
   );
 
   const roleInsight = useMemo(() => {
-    if (user?.role === "HR") {
+    if (user?.role === "HR" || user?.role === "TEAM_LEAD") {
       return {
         label: "Control scope",
-        value: "Create, assign, and review work",
-        meta: "Create tasks, assign developers, manage task details, and review submitted work.",
-      };
-    }
-
-    if (user?.role === "TEAM_LEAD") {
-      return {
-        label: "Control scope",
-        value: "Review and approval control",
-        meta: "Review submitted work, request revisions, and close reviewed tasks from the queue.",
+        value: user.role === "HR" ? "Create, assign, and review work" : "Assign, review, and guide work",
+        meta:
+          user.role === "HR"
+            ? "Create tasks, assign developers, manage task details, and review submitted work."
+            : "Assign tasks, update task details, review submitted work, and move reviewed work to completion.",
       };
     }
 
@@ -106,7 +101,7 @@ export default function TasksPage() {
               </p>
             </div>
 
-            {user?.role === "HR" && (
+            {(user?.role === "HR" || user?.role === "TEAM_LEAD") && (
               <div className="page-header-actions">
                 <button
                   onClick={() => {

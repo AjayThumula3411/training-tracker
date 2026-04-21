@@ -8,6 +8,7 @@ type InputProps = {
   value: string;
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
   icon?: ReactNode;
+  autoComplete?: string;
 };
 
 export default function Input({
@@ -16,6 +17,7 @@ export default function Input({
   value,
   onChange,
   icon,
+  autoComplete,
 }: InputProps) {
   return (
     <div className="group flex w-full items-center gap-3 rounded-[22px] border border-slate-200/80 bg-white/90 px-4 py-3.5 text-slate-900 shadow-[0_12px_24px_rgba(15,23,42,0.05)] transition focus-within:-translate-y-0.5 focus-within:border-blue-400 focus-within:bg-white focus-within:shadow-[0_0_0_4px_rgba(37,99,235,0.12)]">
@@ -25,6 +27,7 @@ export default function Input({
         placeholder={placeholder}
         value={value}
         onChange={onChange}
+        autoComplete={autoComplete}
         className="w-full bg-transparent text-slate-900 outline-none placeholder:text-slate-400"
       />
     </div>

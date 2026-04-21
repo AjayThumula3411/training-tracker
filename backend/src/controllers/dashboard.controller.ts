@@ -36,6 +36,8 @@ export const getDashboard = async (req: AuthRequest, res: Response) => {
         include: {
           assignedTo: { select: { id: true, name: true, role: true } },
           assignedBy: { select: { id: true, name: true, role: true } },
+          createdBy: { select: { id: true, name: true, role: true } },
+          updatedBy: { select: { id: true, name: true, role: true } },
         },
         orderBy: { updatedAt: "desc" },
       }),
@@ -51,7 +53,7 @@ export const getDashboard = async (req: AuthRequest, res: Response) => {
         where: feedbackWhere,
       }),
       prisma.notification.count({
-        where: { userId: user.id, read: false },
+        where: { userId: user.id, isRead: false },
       }),
       prisma.user.findMany({
         where: userWhere,

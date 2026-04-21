@@ -36,9 +36,15 @@ router.get("/me", authenticate, async (req: AuthRequest, res) => {
         mfaEnabled: true,
         mfaMethod: true,
         department: true,
+        photoUrl: true,
+        githubUrl: true,
+        linkedinUrl: true,
         skills: true,
         trainingStatus: true,
         trainingProgress: true,
+        trainingStartDate: true,
+        trainingEndDate: true,
+        joinDate: true,
       } as never,
     })) as {
       id: string;
@@ -49,9 +55,15 @@ router.get("/me", authenticate, async (req: AuthRequest, res) => {
       mfaEnabled?: boolean;
       mfaMethod?: string;
       department?: string | null;
+      photoUrl?: string | null;
+      githubUrl?: string | null;
+      linkedinUrl?: string | null;
       skills?: string[];
       trainingStatus?: string;
       trainingProgress?: number;
+      trainingStartDate?: Date | null;
+      trainingEndDate?: Date | null;
+      joinDate?: Date;
     } | null;
 
     if (!user || !user.isActive) {

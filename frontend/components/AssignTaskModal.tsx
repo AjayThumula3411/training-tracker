@@ -14,6 +14,7 @@ type AssignTaskModalProps = {
   onClose: () => void;
   onSuccess: () => void;
   task?: Task | null;
+  assignee?: UserProfile | null;
 };
 
 const getErrorMessage = (err: unknown, fallback: string) => {
@@ -25,15 +26,19 @@ export default function AssignTaskModal({
   onClose,
   onSuccess,
   task,
+  assignee,
 }: AssignTaskModalProps) {
   const isEditing = Boolean(task);
+  const directAssignee =
+    assignee && (assignee.role === "JUNIOR_DEV" || assignee.role === "SENIOR_DEV") ? assignee : null;
 
   const [title, setTitle] = useState(task?.title || "");
   const [description, setDescription] = useState(task?.description || "");
   const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.slice(0, 10) : "");
   const [priority, setPriority] = useState<Priority>(task?.priority || "MEDIUM");
+  const [attachments, setAttachments] = useState(task?.attachments?.join("\n") || "");
   const [developers, setDevelopers] = useState<UserProfile[]>([]);
-  const [assignedToId, setAssignedToId] = useState(task?.assignedToId || "");
+  const [assignedToId, setAssignedToId] = useState(task?.assignedToId || directAssignee?.id || "");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loadingDevelopers, setLoadingDevelopers] = useState(true);
@@ -45,19 +50,20 @@ export default function AssignTaskModal({
         setLoadingDevelopers(true);
         const res = await api.get("/tasks/assignable-developers");
         const directDevelopers = res.data as UserProfile[];
+        const nextDevelopers =
+          directAssignee && !directDevelopers.some((developer) => developer.id === directAssignee.id)
+            ? [directAssignee, ...directDevelopers]
+            : directDevelopers;
 
-        if (directDevelopers.length > 0) {
-          setDevelopers(directDevelopers);
+        setDevelopers(nextDevelopers);
+      } catch (err) {
+        if (directAssignee) {
+          setDevelopers([directAssignee]);
+          setAssignedToId((current) => current || directAssignee.id);
+          setError("");
           return;
         }
 
-        const fallbackRes = await api.get("/users");
-        const fallbackDevelopers = (fallbackRes.data as UserProfile[]).filter(
-          (candidate) => candidate.role === "JUNIOR_DEV" || candidate.role === "SENIOR_DEV"
-        );
-
-        setDevelopers(fallbackDevelopers);
-      } catch (err) {
         setError(getErrorMessage(err, "Unable to load developers. Please refresh your session."));
       } finally {
         setLoadingDevelopers(false);
@@ -65,7 +71,13 @@ export default function AssignTaskModal({
     };
 
     void fetchUsers();
-  }, []);
+  }, [directAssignee]);
+
+  useEffect(() => {
+    if (directAssignee && !task?.assignedToId) {
+      setAssignedToId((current) => current || directAssignee.id);
+    }
+  }, [directAssignee, task?.assignedToId]);
 
   const formIsValid = useMemo(
     () => title.trim().length > 2 && description.trim().length > 4 && Boolean(assignedToId),
@@ -87,6 +99,10 @@ export default function AssignTaskModal({
         description: description.trim(),
         dueDate: dueDate || "",
         priority,
+        attachments: attachments
+          .split(/\r?\n|,/)
+          .map((entry) => entry.trim())
+          .filter(Boolean),
         assignedToId,
       };
 
@@ -193,6 +209,15 @@ export default function AssignTaskModal({
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div>
+              <textarea
+                className="field mt-2 min-h-[110px] resize-y text-slate-950 placeholder:text-slate-400"
+                placeholder="Attachment URLs, separated by commas or new lines"
+                value={attachments}
+                onChange={(e) => setAttachments(e.target.value)}
+              />
             </div>
 
             {error && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}

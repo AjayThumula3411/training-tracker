@@ -19,6 +19,14 @@ export type TaskStatus =
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
 export type FeedbackType = "EXTERNAL" | "INTERNAL";
+export type NotificationType =
+  | "TASK_ASSIGNED"
+  | "TASK_SUBMITTED"
+  | "TASK_REVIEWED"
+  | "TASK_NEEDS_REVISION"
+  | "TASK_COMPLETED"
+  | "EXTERNAL_FEEDBACK_ADDED"
+  | "TRAINING_STATUS_CHANGED";
 
 export type UserProfile = {
   id: string;
@@ -39,19 +47,27 @@ export type UserProfile = {
   trainingStartDate?: string | null;
   trainingEndDate?: string | null;
   joinDate?: string;
+  progressPercent?: number;
 };
 
 export type Task = {
   id: string;
   title: string;
   description: string;
+  attachments?: string[];
   priority: Priority;
   status: TaskStatus;
   dueDate?: string | null;
   assignedToId: string;
   assignedById: string;
+  createdById?: string;
+  updatedById?: string;
+  createdAt?: string;
+  updatedAt?: string;
   assignedTo?: Pick<UserProfile, "id" | "name" | "role">;
   assignedBy?: Pick<UserProfile, "id" | "name" | "role">;
+  createdBy?: Pick<UserProfile, "id" | "name" | "role">;
+  updatedBy?: Pick<UserProfile, "id" | "name" | "role">;
 };
 
 export type Feedback = {
@@ -69,7 +85,8 @@ export type Notification = {
   id: string;
   userId: string;
   message: string;
-  read: boolean;
+  type: NotificationType;
+  isRead: boolean;
   createdAt: string;
 };
 
@@ -77,10 +94,11 @@ export type AuditLog = {
   id: string;
   action: string;
   entity: string;
-  entityId?: string | null;
-  actorId: string;
-  details?: Record<string, unknown> | null;
+  targetId?: string | null;
+  performedBy: string;
+  metadata?: Record<string, unknown> | null;
   createdAt: string;
+  performer?: Pick<UserProfile, "id" | "name" | "role"> | null;
 };
 
 export type DashboardSummary = {

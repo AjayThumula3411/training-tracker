@@ -18,21 +18,36 @@ const formatRole = (role?: string) =>
         .join(" ")
     : "Team Member";
 
+const formatDate = (value?: string | null) =>
+  value ? new Date(value).toLocaleDateString() : "Not available";
+
 export default function ProfileCard({ user }: ProfileCardProps) {
   const { user: viewer } = useAuth();
   const canViewInternalNotes = viewer?.role === "HR" || viewer?.role === "TEAM_LEAD";
+  const showsTrainingDetails = user.role === "JUNIOR_DEV" || user.role === "SENIOR_DEV";
 
   return (
     <section className="premium-panel rounded-[28px] p-6 md:p-8">
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">Profile overview</p>
-          <h2 className="mt-3 text-3xl font-semibold text-slate-950">{user.name}</h2>
-          <p className="mt-2 text-base text-slate-600">{user.email || "Email unavailable"}</p>
+          <div className="mt-4 flex items-start gap-4">
+            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-[24px] bg-slate-100 text-2xl font-semibold text-slate-600">
+              {user.photoUrl ? (
+                <img src={user.photoUrl} alt={user.name} className="h-full w-full object-cover" />
+              ) : (
+                user.name.charAt(0).toUpperCase()
+              )}
+            </div>
+            <div>
+              <h2 className="text-3xl font-semibold text-slate-950">{user.name}</h2>
+              <p className="mt-2 text-base text-slate-600">{user.email || "Email unavailable"}</p>
+            </div>
+          </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
             <span className="badge bg-blue-100 text-blue-700">{formatRole(user.role)}</span>
-            {user.trainingStatus && <TrainingStatusBadge status={user.trainingStatus} />}
+            {showsTrainingDetails && user.trainingStatus && <TrainingStatusBadge status={user.trainingStatus} />}
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -42,18 +57,30 @@ export default function ProfileCard({ user }: ProfileCardProps) {
             </div>
             <div className="soft-stat">
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Joined</p>
-              <p className="mt-2 font-medium text-slate-900">
-                {user.joinDate ? new Date(user.joinDate).toLocaleDateString() : "Not available"}
-              </p>
+              <p className="mt-2 font-medium text-slate-900">{formatDate(user.joinDate)}</p>
             </div>
+            {showsTrainingDetails && (
+              <div className="soft-stat">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Training starts</p>
+                <p className="mt-2 font-medium text-slate-900">{formatDate(user.trainingStartDate)}</p>
+              </div>
+            )}
+            {showsTrainingDetails && (
+              <div className="soft-stat">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Training ends</p>
+                <p className="mt-2 font-medium text-slate-900">{formatDate(user.trainingEndDate)}</p>
+              </div>
+            )}
           </div>
 
-          <div className="soft-stat mt-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Training progress</p>
-            <div className="mt-3">
-              <ProgressBar value={user.trainingProgress ?? 0} />
+          {showsTrainingDetails && (
+            <div className="soft-stat mt-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Training progress</p>
+              <div className="mt-3">
+                <ProgressBar value={user.trainingProgress ?? 0} />
+              </div>
             </div>
-          </div>
+          )}
 
           {canViewInternalNotes && (
             <div className="soft-stat mt-6">

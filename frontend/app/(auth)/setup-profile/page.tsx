@@ -14,7 +14,8 @@ export default function SetupProfilePage() {
   const router = useRouter();
 
   const [form, setForm] = useState({
-    department: "",
+    name: "",
+    photoUrl: "",
     skills: "",
     githubUrl: "",
     linkedinUrl: "",
@@ -27,7 +28,8 @@ export default function SetupProfilePage() {
       setLoading(true);
 
       await api.post("/profile/setup", {
-        department: form.department,
+        name: form.name,
+        photoUrl: form.photoUrl,
         skills: form.skills
           .split(",")
           .map((s) => s.trim())
@@ -56,7 +58,7 @@ export default function SetupProfilePage() {
           </span>
           <h1 className="mt-6 text-4xl font-semibold leading-tight">Add the context your team needs.</h1>
           <p className="mt-4 max-w-md text-sm leading-7 text-slate-300">
-            Complete your profile so leads and HR can understand skill coverage, reporting lines, and development links at a glance.
+            HR controls access and role assignment first. This step lets you finish your own profile with the personal details only you should maintain.
           </p>
         </section>
 
@@ -68,9 +70,16 @@ export default function SetupProfilePage() {
             <div className="mt-8 grid gap-4">
               <input
                 className="field"
-                placeholder="Department"
-                value={form.department}
-                onChange={(e) => setForm({ ...form, department: e.target.value })}
+                placeholder="Full name"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+
+              <input
+                className="field"
+                placeholder="Profile photo URL"
+                value={form.photoUrl}
+                onChange={(e) => setForm({ ...form, photoUrl: e.target.value })}
               />
 
               <input

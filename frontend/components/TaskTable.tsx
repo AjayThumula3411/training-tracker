@@ -1,5 +1,6 @@
 "use client";
 
+import { ChangeEvent, useState } from "react";
 import { AxiosError } from "axios";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
@@ -37,6 +38,23 @@ const getStatusLabel = (status: TaskStatus) => {
   return formatStatus(status);
 };
 
+const toBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Unable to read file"));
+        return;
+      }
+      resolve(result.split(",")[1] || "");
+    };
+    reader.onerror = () => reject(new Error("Unable to read file"));
+    reader.readAsDataURL(file);
+  });
+
+const shortId = (id: string) => id.slice(0, 8);
+
 export default function TaskTable({
   tasks,
   currentUserRole,
@@ -48,23 +66,61 @@ export default function TaskTable({
   const isTeamLead = currentUserRole === "TEAM_LEAD";
   const isDeveloper = currentUserRole === "JUNIOR_DEV" || currentUserRole === "SENIOR_DEV";
   const canReviewTasks = isHr || isTeamLead;
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File[]>>({});
+  const [busyTaskId, setBusyTaskId] = useState("");
 
-  const updateStatus = async (id: string, status: TaskStatus) => {
+  const handleFileChange = (taskId: string, event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    setPendingFiles((current) => ({ ...current, [taskId]: files }));
+  };
+
+  const uploadFiles = async (task: Task) => {
+    const files = pendingFiles[task.id] || [];
+
+    for (const file of files) {
+      const contentBase64 = await toBase64(file);
+      await api.post("/tasks/upload", {
+        taskId: task.id,
+        fileName: file.name,
+        mimeType: file.type,
+        contentBase64,
+      });
+    }
+  };
+
+  const updateStatus = async (task: Task, status: TaskStatus) => {
     try {
-      await api.patch(`/tasks/${id}/status`, { status });
+      setBusyTaskId(task.id);
+
+      if (status === "SUBMITTED") {
+        await uploadFiles(task);
+      }
+
+      await api.patch(`/tasks/${task.id}/status`, { status });
+
+      setPendingFiles((current) => {
+        const next = { ...current };
+        delete next[task.id];
+        return next;
+      });
+
       toast.success(
         status === "REVIEWED"
           ? "Task reviewed"
           : status === "COMPLETED"
-          ? "Task approved"
-          : status === "NEEDS_REVISION"
-            ? "Task sent back for revision"
-            : "Task updated"
+            ? "Task approved"
+            : status === "NEEDS_REVISION"
+              ? "Task sent back for revision"
+              : status === "SUBMITTED"
+                ? "Task submitted"
+                : "Task updated"
       );
       onRefresh?.();
     } catch (error) {
       const apiError = error as AxiosError<ApiError>;
       toast.error(apiError.response?.data?.message || "Failed to update status");
+    } finally {
+      setBusyTaskId("");
     }
   };
 
@@ -73,12 +129,15 @@ export default function TaskTable({
     if (!confirmed) return;
 
     try {
+      setBusyTaskId(task.id);
       await api.delete(`/tasks/${task.id}`);
       toast.success("Task deleted");
       onRefresh?.();
     } catch (error) {
       const apiError = error as AxiosError<ApiError>;
       toast.error(apiError.response?.data?.message || "Failed to delete task");
+    } finally {
+      setBusyTaskId("");
     }
   };
 
@@ -95,20 +154,26 @@ export default function TaskTable({
     <div className="table-shell">
       <table>
         <colgroup>
-          <col className="w-[28%]" />
-          <col className="w-[16%]" />
-          <col className="w-[12%]" />
-          <col className="w-[12%]" />
-          <col className="w-[14%]" />
-          <col className="w-[18%]" />
+          <col className="w-[9%]" />
+          <col className="w-[17%]" />
+          <col className="w-[10%]" />
+          <col className="w-[9%]" />
+          <col className="w-[10%]" />
+          <col className="w-[11%]" />
+          <col className="w-[11%]" />
+          <col className="w-[10%]" />
+          <col className="w-[13%]" />
         </colgroup>
         <thead>
           <tr>
-            <th>Task</th>
-            <th>Assignee</th>
+            <th>Task ID</th>
+            <th>Title</th>
             <th>Priority</th>
-            <th>Due</th>
+            <th>Due Date</th>
             <th>Status</th>
+            <th>Assigned To</th>
+            <th>Assigned By</th>
+            <th>Attachments</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -117,23 +182,26 @@ export default function TaskTable({
             const canDeveloperUpdate = isDeveloper && task.assignedToId === currentUserId;
             const canReview = task.status === "SUBMITTED" && canReviewTasks;
             const canCompleteReview = task.status === "REVIEWED" && canReviewTasks;
-            const canEdit = isHr;
+            const canEdit = isHr || isTeamLead;
             const canDelete = isHr;
+            const canUpload = canDeveloperUpdate && (task.status === "IN_PROGRESS" || task.status === "NEEDS_REVISION");
+            const filesSelected = pendingFiles[task.id]?.length || 0;
+            const isBusy = busyTaskId === task.id;
 
             return (
               <tr key={task.id}>
+                <td className="text-sm font-semibold text-slate-700">{shortId(task.id)}</td>
                 <td>
                   <p className="font-semibold text-slate-900">{task.title}</p>
                   <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">
                     {task.description || "No description provided."}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-400">
-                    <span>Assigned by {task.assignedBy?.name || "Unknown"}</span>
+                    <span>Created by {task.createdBy?.name || task.assignedBy?.name || "Unknown"}</span>
                     <span>&bull;</span>
-                    <span>ID {task.id.slice(0, 8)}</span>
+                    <span>Updated by {task.updatedBy?.name || "Unknown"}</span>
                   </div>
                 </td>
-                <td className="text-sm text-slate-600">{task.assignedTo?.name || "Unassigned"}</td>
                 <td>
                   <span className={`badge ${priorityTone[task.priority] || "bg-slate-100 text-slate-700"}`}>
                     {task.priority}
@@ -159,46 +227,85 @@ export default function TaskTable({
                     {getStatusLabel(task.status)}
                   </span>
                 </td>
+                <td className="text-sm text-slate-600">{task.assignedTo?.name || "Unknown"}</td>
+                <td className="text-sm text-slate-600">{task.assignedBy?.name || "Unknown"}</td>
+                <td>
+                  <div className="space-y-2">
+                    {task.attachments && task.attachments.length > 0 ? (
+                      task.attachments.map((attachment, index) => (
+                        <a
+                          key={`${task.id}-${index}`}
+                          href={attachment}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block text-xs font-medium text-blue-700 underline-offset-2 hover:underline"
+                        >
+                          File {index + 1}
+                        </a>
+                      ))
+                    ) : (
+                      <p className="text-xs text-slate-400">No files</p>
+                    )}
+                    {canUpload && (
+                      <div className="space-y-2">
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          multiple
+                          onChange={(event) => handleFileChange(task.id, event)}
+                          className="block w-full text-xs text-slate-500"
+                        />
+                        {filesSelected > 0 && (
+                          <p className="text-xs text-slate-500">{filesSelected} file(s) ready for submit</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </td>
                 <td>
                   <div className="table-actions">
-                    {canDeveloperUpdate &&
-                      (
-                        [
-                          task.status === "ASSIGNED" && {
-                            value: "IN_PROGRESS" as TaskStatus,
-                            label: "Start Work",
-                          },
-                          task.status === "NEEDS_REVISION" && {
-                            value: "IN_PROGRESS" as TaskStatus,
-                            label: "Resume Work",
-                          },
-                          task.status === "IN_PROGRESS" && {
-                            value: "SUBMITTED" as TaskStatus,
-                            label: "Submit for Review",
-                          },
-                        ].filter(
-                          (option): option is { value: TaskStatus; label: string } => Boolean(option)
-                        )
-                      ).map((option) => (
-                          <button
-                            key={option.value}
-                            onClick={() => updateStatus(task.id, option.value)}
-                            className="btn-secondary px-3 py-2 text-xs"
-                          >
-                            {option.label}
-                          </button>
-                        ))}
+                    {canDeveloperUpdate && task.status === "ASSIGNED" && (
+                      <button
+                        onClick={() => updateStatus(task, "IN_PROGRESS")}
+                        disabled={isBusy}
+                        className="btn-secondary px-3 py-2 text-xs"
+                      >
+                        Start
+                      </button>
+                    )}
+
+                    {canDeveloperUpdate && task.status === "NEEDS_REVISION" && (
+                      <button
+                        onClick={() => updateStatus(task, "IN_PROGRESS")}
+                        disabled={isBusy}
+                        className="btn-secondary px-3 py-2 text-xs"
+                      >
+                        Start
+                      </button>
+                    )}
+
+                    {canDeveloperUpdate && task.status === "IN_PROGRESS" && (
+                      <button
+                        onClick={() => updateStatus(task, "SUBMITTED")}
+                        disabled={isBusy}
+                        className="btn-secondary px-3 py-2 text-xs"
+                      >
+                        Submit
+                      </button>
+                    )}
 
                     {canReview && (
                       <>
                         <button
-                          onClick={() => updateStatus(task.id, "REVIEWED")}
+                          onClick={() => updateStatus(task, "REVIEWED")}
+                          disabled={isBusy}
                           className="btn-primary px-3 py-2 text-xs"
                         >
-                          Approve
+                          Review
                         </button>
                         <button
-                          onClick={() => updateStatus(task.id, "NEEDS_REVISION")}
+                          onClick={() => updateStatus(task, "NEEDS_REVISION")}
+                          disabled={isBusy}
                           className="btn-secondary px-3 py-2 text-xs"
                         >
                           Reject
@@ -208,10 +315,11 @@ export default function TaskTable({
 
                     {canCompleteReview && (
                       <button
-                        onClick={() => updateStatus(task.id, "COMPLETED")}
+                        onClick={() => updateStatus(task, "COMPLETED")}
+                        disabled={isBusy}
                         className="btn-primary px-3 py-2 text-xs"
                       >
-                        Complete
+                        Approve
                       </button>
                     )}
 
@@ -222,7 +330,11 @@ export default function TaskTable({
                     )}
 
                     {canDelete && (
-                      <button onClick={() => deleteTask(task)} className="btn-secondary px-3 py-2 text-xs text-rose-700">
+                      <button
+                        onClick={() => deleteTask(task)}
+                        disabled={isBusy}
+                        className="btn-secondary px-3 py-2 text-xs text-rose-700"
+                      >
                         Delete
                       </button>
                     )}

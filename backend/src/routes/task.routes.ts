@@ -18,7 +18,7 @@ const router = express.Router();
 router.post(
   "/create",
   authenticate,
-  authorizeRoles("HR"),
+  authorizeRoles("HR", "TEAM_LEAD"),
   createTask
 );
 
@@ -26,7 +26,7 @@ router.post(
 router.post(
   "/assign",
   authenticate,
-  authorizeRoles("HR"),
+  authorizeRoles("HR", "TEAM_LEAD"),
   createTask
 );
 
@@ -35,7 +35,7 @@ router.get("/", authenticate, getAllTasks);
 router.get(
   "/assignable-developers",
   authenticate,
-  authorizeRoles("HR"),
+  authorizeRoles("HR", "TEAM_LEAD"),
   getAssignableDevelopers
 );
 router.get("/:developerId", authenticate, getTasksByDeveloper);
@@ -44,7 +44,7 @@ router.get("/:developerId", authenticate, getTasksByDeveloper);
 router.put(
   "/:id",
   authenticate,
-  authorizeRoles("HR"),
+  authorizeRoles("HR", "TEAM_LEAD"),
   updateTaskDetails
 );
 
@@ -65,6 +65,18 @@ router.put(
 
 router.patch(
   "/:id/status",
+  authenticate,
+  updateTaskStatus
+);
+
+router.patch(
+  "/status/:id",
+  authenticate,
+  updateTaskStatus
+);
+
+router.patch(
+  "/status",
   authenticate,
   updateTaskStatus
 );

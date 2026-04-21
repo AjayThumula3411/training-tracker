@@ -60,14 +60,14 @@ export default function FeedbackForm({ developerId, onSuccess }: FeedbackFormPro
       <p className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">Feedback</p>
       <h3 className="mt-2 text-2xl font-semibold text-slate-950">Add feedback</h3>
       <p className="section-subtitle mt-2">
-        External feedback is visible broadly. Internal feedback is limited to HR and Team Lead only.
+        External feedback is visible to everyone. Internal feedback is visible only to HR and Team Lead. Markdown is supported.
       </p>
 
       <div className="mt-6 grid gap-4">
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="Write actionable feedback for this developer."
+          placeholder="Write actionable feedback for this developer. You can use Markdown like **bold**, *italics*, `code`, - lists, and [links](https://example.com)."
           className="field min-h-[140px] resize-y"
         />
 
@@ -83,6 +83,10 @@ export default function FeedbackForm({ developerId, onSuccess }: FeedbackFormPro
         )}
 
         {error && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
+
+        <p className="helper-text">
+          External: Senior Dev, Team Lead, and HR can add it. Internal: Team Lead and HR only.
+        </p>
 
         <div>
           <button onClick={submit} disabled={loading} className="btn-primary">

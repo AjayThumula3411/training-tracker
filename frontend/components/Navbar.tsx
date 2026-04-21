@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { FaBell, FaChartLine, FaClipboardList, FaShieldAlt, FaUsers } from "react-icons/fa";
 import { useAuth } from "@/context/AuthContext";
+import { storeAuthToken } from "@/lib/auth-storage";
 import api from "@/lib/api";
 import { Notification as AppNotification } from "@/lib/types";
 
@@ -24,16 +25,16 @@ export default function Navbar() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [open, setOpen] = useState(false);
 
-  const unreadCount = notifications.filter((item) => !item.read).length;
+  const unreadCount = notifications.filter((item) => !item.isRead).length;
 
   const navigation = useMemo(() => {
     const links = [
       { href: "/dashboard", label: "Overview", icon: <FaChartLine /> },
+      { href: "/dashboard/profile", label: "My Profile", icon: <FaUsers /> },
       { href: "/dashboard/tasks", label: "Tasks", icon: <FaClipboardList /> },
     ];
 
     if (user?.role === "HR" || user?.role === "TEAM_LEAD") {
-      links.push({ href: "/dashboard/profiles", label: "Profiles", icon: <FaUsers /> });
       links.push({ href: "/dashboard/audit-log", label: "Audit", icon: <FaShieldAlt /> });
     }
 
@@ -64,8 +65,8 @@ export default function Navbar() {
   }, [fetchNotifications]);
 
   const handleLogout = async () => {
-    await api.post("/auth/logout");
-    window.localStorage.removeItem("auth_token");
+    await api.post("/auth/logout", undefined, { withCredentials: true });
+    storeAuthToken(null);
     setUser(null);
     router.replace("/login");
   };
@@ -146,7 +147,7 @@ export default function Navbar() {
                         key={item.id}
                         onClick={() => markRead(item.id)}
                         className={`block w-full border-b border-slate-100 px-4 py-3 text-left transition last:border-b-0 ${
-                          item.read ? "bg-white text-slate-500" : "bg-blue-50/70 text-slate-900"
+                          item.isRead ? "bg-white text-slate-500" : "bg-blue-50/70 text-slate-900"
                         }`}
                       >
                         <p className="text-sm font-medium">{item.message}</p>

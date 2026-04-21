@@ -20,8 +20,6 @@ const userSelect = {
   createdAt: true,
 };
 
-const editableDeveloperRoles: Role[] = [Role.JUNIOR_DEV, Role.SENIOR_DEV];
-
 const deleteUserHandler = async (req: AuthRequest, res: express.Response) => {
   if (!req.user) return res.status(401).json({ message: "Unauthorized" });
 
@@ -62,25 +60,22 @@ const deleteUserHandler = async (req: AuthRequest, res: express.Response) => {
         where: { email: existingUser.email.toLowerCase() },
       });
 
-      await tx.auditLog.deleteMany({
-        where: {
-          OR: [
-            { actorId: id },
-            { entity: "User", entityId: id },
-          ],
-        },
-      });
-
       await tx.user.delete({
         where: { id },
       });
     });
 
-    await createAuditLog("USER_DELETED", "User", req.user.id, id, {
-      email: existingUser.email,
-      role: existingUser.role,
-      permanent: true,
-    });
+    await createAuditLog(
+      "USER_DELETED",
+      req.user.id,
+      id,
+      {
+        email: existingUser.email,
+        role: existingUser.role,
+        permanent: true,
+      },
+      "User"
+    );
 
     return res.json({ message: "User deleted permanently" });
   } catch (error) {
@@ -139,10 +134,16 @@ router.post("/invite", authenticate, authorizeRoles(Role.HR), async (req: AuthRe
 
     await sendInvitationEmail(normalizedEmail, setupLink, role);
 
-    await createAuditLog("INVITE_CREATED", "Invitation", req.user.id, invitation.id, {
-      email: normalizedEmail,
-      role,
-    });
+    await createAuditLog(
+      "INVITE_CREATED",
+      req.user.id,
+      invitation.id,
+      {
+        email: normalizedEmail,
+        role,
+      },
+      "Invitation"
+    );
 
     res.status(201).json({
       message: "Invitation email sent successfully",
@@ -169,12 +170,6 @@ router.patch("/:id/role", authenticate, authorizeRoles(Role.HR), async (req: Aut
     if (req.user.id === id) {
       return res.status(400).json({ message: "You cannot change your own role" });
     }
-    if (!editableDeveloperRoles.includes(existingUser.role)) {
-      return res.status(403).json({ message: "Only developer roles can be changed" });
-    }
-    if (!editableDeveloperRoles.includes(role)) {
-      return res.status(400).json({ message: "Developers can only be changed between Junior Dev and Senior Dev" });
-    }
 
     const updatedUser = await prisma.user.update({
       where: { id },
@@ -182,10 +177,16 @@ router.patch("/:id/role", authenticate, authorizeRoles(Role.HR), async (req: Aut
       select: userSelect,
     });
 
-    await createAuditLog("ROLE_CHANGED", "User", req.user.id, id, {
-      from: existingUser.role,
-      to: role,
-    });
+    await createAuditLog(
+      "ROLE_CHANGED",
+      req.user.id,
+      id,
+      {
+        from: existingUser.role,
+        to: role,
+      },
+      "User"
+    );
 
     res.json(updatedUser);
   } catch {

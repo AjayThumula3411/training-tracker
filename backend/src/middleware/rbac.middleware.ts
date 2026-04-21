@@ -10,8 +10,11 @@ export const authorizeRoles = (...roles: Array<Role | string>) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    if (!roles.includes(user.role)) {
-      return res.status(403).json({ message: "Access denied" });
+    const requiredRoles = roles.map((role) => `${role}`.trim().toUpperCase());
+    const currentRole = `${user.role}`.trim().toUpperCase();
+
+    if (!requiredRoles.includes(currentRole)) {
+      return res.status(403).json({ message: "Forbidden" });
     }
 
     next();

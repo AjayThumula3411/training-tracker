@@ -8,6 +8,7 @@ import { FaEnvelope, FaLock, FaShieldAlt, FaKey } from "react-icons/fa";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import Input from "@/components/Input";
+import { storeAuthToken } from "@/lib/auth-storage";
 import { useAuth } from "@/context/AuthContext";
 
 type ApiError = {
@@ -32,7 +33,7 @@ type VerifyOtpResponse = {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setUser, user, loading: authLoading } = useAuth();
+  const { fetchUser, setUser, user, loading: authLoading } = useAuth();
 
   const [email, setEmail] = useState("");
   const [otpEmail, setOtpEmail] = useState("");
@@ -63,12 +64,13 @@ export default function LoginPage() {
     try {
       setLoading(true);
       const res = await api.post<VerifyOtpResponse>("/auth/verify-otp", { email: otpEmail || email, otp });
-      window.localStorage.setItem("auth_token", res.data.token);
+      storeAuthToken(res.data.token);
       setUser({
         id: res.data.user.id,
         name: res.data.user.name,
         role: res.data.user.role,
       });
+      await fetchUser();
 
       toast.success("Welcome back");
       router.replace("/dashboard");
@@ -149,6 +151,7 @@ export default function LoginPage() {
                     placeholder="Email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
                   />
 
                   <Input
@@ -157,6 +160,7 @@ export default function LoginPage() {
                     placeholder="Password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
                   />
 
                   <button onClick={requestOtp} disabled={loading} className="btn-primary w-full">
@@ -174,6 +178,7 @@ export default function LoginPage() {
                     placeholder="Enter 6-digit OTP"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value)}
+                    autoComplete="one-time-code"
                   />
 
                   <button onClick={verifyOtp} disabled={loading || otp.trim().length < 6} className="btn-primary w-full">

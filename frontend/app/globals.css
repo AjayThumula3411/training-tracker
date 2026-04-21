@@ -23,9 +23,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter), Arial, Helvetica, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), "Courier New", monospace;
-  --font-display: var(--font-libre-baskerville), Georgia, serif;
+  --font-sans: "Segoe UI", Arial, Helvetica, sans-serif;
+  --font-mono: "Cascadia Code", "Courier New", monospace;
+  --font-display: Georgia, "Times New Roman", serif;
 }
 
 * {
@@ -44,7 +44,7 @@ body {
     radial-gradient(circle at 50% 100%, rgba(37, 99, 235, 0.05), transparent 28%),
     linear-gradient(180deg, #f9fbff 0%, #eef4fb 46%, #e8eff7 100%);
   color: var(--foreground);
-  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+  font-family: "Segoe UI", Arial, Helvetica, sans-serif;
 }
 
 h1,
@@ -52,7 +52,7 @@ h2,
 h3,
 h4,
 .font-display {
-  font-family: var(--font-libre-baskerville), Georgia, serif;
+  font-family: Georgia, "Times New Roman", serif;
 }
 
 a {
@@ -262,7 +262,7 @@ textarea {
   line-height: 1.05;
   font-weight: 700;
   color: #0f172a;
-  font-family: var(--font-libre-baskerville), Georgia, serif;
+  font-family: Georgia, "Times New Roman", serif;
 }
 
 .page-header-copy {
@@ -327,7 +327,7 @@ textarea {
   line-height: 1;
   font-weight: 700;
   color: #0f172a;
-  font-family: var(--font-libre-baskerville), Georgia, serif;
+  font-family: Georgia, "Times New Roman", serif;
 }
 
 .metric-meta {
@@ -360,6 +360,22 @@ textarea {
 
 .field::placeholder {
   color: #94a3b8;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-text-fill-color: #0f172a;
+  caret-color: #0f172a;
+  transition: background-color 9999s ease-out 0s;
+  -webkit-box-shadow: 0 0 0 1000px rgba(248, 251, 255, 0.94) inset;
+  box-shadow: 0 0 0 1000px rgba(248, 251, 255, 0.94) inset;
 }
 
 .btn-primary {
@@ -542,9 +558,17 @@ textarea {
 
 .table-shell .table-actions {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: stretch;
   gap: 10px;
+  width: 100%;
+}
+
+.table-shell .table-actions > .btn-primary,
+.table-shell .table-actions > .btn-secondary {
+  width: 100%;
+  max-width: none;
 }
 
 .auth-shell {
@@ -680,6 +704,35 @@ textarea {
   font-size: 1.1rem;
   font-weight: 700;
   color: #0f172a;
+}
+
+.markdown-body {
+  display: grid;
+  gap: 10px;
+}
+
+.markdown-paragraph {
+  margin: 0;
+}
+
+.markdown-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.markdown-list li {
+  margin: 0;
+}
+
+.markdown-quote {
+  margin: 0;
+  border-left: 3px solid rgba(19, 71, 168, 0.24);
+  background: rgba(255, 255, 255, 0.55);
+  padding: 10px 14px;
+  color: #334155;
+  font-style: italic;
 }
 
 @media (max-width: 768px) {

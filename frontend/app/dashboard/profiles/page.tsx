@@ -16,13 +16,14 @@ const roleLabel = (role?: string) =>
         .join(" ")
     : "Team Member";
 
+const isDeveloperRole = (role?: string) => role === "JUNIOR_DEV" || role === "SENIOR_DEV";
+
 export default function ProfilesPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [error, setError] = useState("");
   const router = useRouter();
   const { user, loading } = useAuth();
-  const hasProfileAccess = Boolean(user);
-  const accessError = "";
+  const canBrowseDirectory = user?.role === "HR" || user?.role === "TEAM_LEAD";
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -44,7 +45,8 @@ export default function ProfilesPage() {
       return;
     }
 
-    if (!hasProfileAccess) {
+    if (!canBrowseDirectory) {
+      router.replace("/dashboard/profile");
       return;
     }
 
@@ -53,7 +55,7 @@ export default function ProfilesPage() {
     };
 
     void loadProfiles();
-  }, [fetchUsers, hasProfileAccess, loading, router, user]);
+  }, [canBrowseDirectory, fetchUsers, loading, router, user]);
 
   if (loading) {
     return (
@@ -63,6 +65,10 @@ export default function ProfilesPage() {
         </div>
       </div>
     );
+  }
+
+  if (!canBrowseDirectory) {
+    return null;
   }
 
   return (
@@ -76,16 +82,18 @@ export default function ProfilesPage() {
               <p className="page-header-kicker">Directory</p>
               <h1 className="page-header-title">Profiles</h1>
               <p className="page-header-copy">
-                Browse team context and open profile feedback history based on your role visibility.
+                {canBrowseDirectory
+                  ? "Browse team profiles, training progress, and profile details based on your role visibility."
+                  : "Open your profile, keep personal details current, and track your training journey."}
               </p>
             </div>
           </div>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {(accessError || error) && (
+          {error && (
             <div className="md:col-span-2 xl:col-span-3 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {accessError || error}
+              {error}
             </div>
           )}
 
@@ -96,9 +104,18 @@ export default function ProfilesPage() {
               className="premium-panel rounded-[26px] p-6 text-left transition hover:-translate-y-1"
             >
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-950">{profile.name}</h2>
-                  <p className="mt-1 text-sm text-slate-500">{profile.email || "Email not available"}</p>
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 text-lg font-semibold text-slate-600">
+                    {profile.photoUrl ? (
+                      <img src={profile.photoUrl} alt={profile.name} className="h-full w-full object-cover" />
+                    ) : (
+                      profile.name.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-950">{profile.name}</h2>
+                    <p className="mt-1 text-sm text-slate-500">{profile.email || "Email not available"}</p>
+                  </div>
                 </div>
                 <span className="badge bg-blue-100 text-blue-700">{roleLabel(profile.role)}</span>
               </div>
@@ -114,6 +131,19 @@ export default function ProfilesPage() {
                     {profile.skills?.length ? profile.skills.join(", ") : "No skills listed"}
                   </p>
                 </div>
+                {isDeveloperRole(profile.role) ? (
+                  <div className="soft-stat">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Training status</p>
+                    <p className="mt-2 font-medium text-slate-900">
+                      {profile.trainingStatus ? profile.trainingStatus.replaceAll("_", " ") : "Not started"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="soft-stat">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Role scope</p>
+                    <p className="mt-2 font-medium text-slate-900">{roleLabel(profile.role)}</p>
+                  </div>
+                )}
               </div>
             </button>
           ))}

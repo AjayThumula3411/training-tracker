@@ -13,8 +13,6 @@ type InviteResponse = {
 };
 
 const inviteRoles: Role[] = ["JUNIOR_DEV", "SENIOR_DEV", "TEAM_LEAD", "HR"];
-const developerRoles: Role[] = ["JUNIOR_DEV", "SENIOR_DEV"];
-
 const formatRole = (role: string) =>
   role
     .toLowerCase()
@@ -205,21 +203,21 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr key={user.id}>
+              {users.map((managedUser) => (
+                <tr key={managedUser.id}>
                   <td>
-                    <p className="font-semibold text-slate-900">{user.name}</p>
+                    <p className="font-semibold text-slate-900">{managedUser.name}</p>
                   </td>
-                  <td className="text-sm text-slate-600">{user.email}</td>
+                  <td className="text-sm text-slate-600">{managedUser.email}</td>
                   <td>
                     <div className="max-w-[240px]">
-                      {user.role === "JUNIOR_DEV" || user.role === "SENIOR_DEV" ? (
+                      {managedUser.id !== user?.id ? (
                         <select
-                          value={user.role}
-                          onChange={(e) => updateRole(user.id, e.target.value as Role)}
+                          value={managedUser.role}
+                          onChange={(e) => updateRole(managedUser.id, e.target.value as Role)}
                           className="field px-3 py-2 text-sm"
                         >
-                          {developerRoles.map((role) => (
+                          {inviteRoles.map((role) => (
                             <option key={role} value={role}>
                               {formatRole(role)}
                             </option>
@@ -227,7 +225,7 @@ export default function UsersPage() {
                         </select>
                       ) : (
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-                          {formatRole(user.role)}
+                          {formatRole(managedUser.role)} (Your account)
                         </div>
                       )}
                     </div>
@@ -235,7 +233,7 @@ export default function UsersPage() {
                   <td>
                     <div className="table-actions">
                       <button
-                        onClick={() => deleteUser(user)}
+                        onClick={() => deleteUser(managedUser)}
                         className="btn-secondary px-3 py-2 text-sm text-rose-700"
                       >
                         Remove

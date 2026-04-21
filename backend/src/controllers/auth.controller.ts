@@ -143,10 +143,16 @@ export const requestLoginOtp = async (req: Request, res: Response) => {
 
     const mailResult = await sendLoginOtpEmail(normalizedEmail, otp);
 
-    await createAuditLog("LOGIN_OTP_REQUESTED", "LoginOtp", user.id, undefined, {
-      email: normalizedEmail,
-      delivered: mailResult.delivered,
-    });
+    await createAuditLog(
+      "LOGIN_OTP_REQUESTED",
+      user.id,
+      undefined,
+      {
+        email: normalizedEmail,
+        delivered: mailResult.delivered,
+      },
+      "LoginOtp"
+    );
 
     res.json({
       message: "OTP sent to your email",
@@ -252,9 +258,15 @@ export const verifyLoginOtp = async (req: Request, res: Response) => {
 
     res.cookie("token", token, AUTH_COOKIE_OPTIONS);
 
-    await createAuditLog("LOGIN_OTP_VERIFIED", "LoginOtp", user.id, undefined, {
-      email: normalizedEmail,
-    });
+    await createAuditLog(
+      "LOGIN_OTP_VERIFIED",
+      user.id,
+      undefined,
+      {
+        email: normalizedEmail,
+      },
+      "LoginOtp"
+    );
 
     res.json({
       message: "Login successful",

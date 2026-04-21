@@ -5,6 +5,7 @@ import { AxiosError } from "axios";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
+import MarkdownText from "@/components/MarkdownText";
 import { Feedback, FeedbackType } from "@/lib/types";
 
 type FeedbackSectionProps = {
@@ -115,7 +116,7 @@ export default function FeedbackSection({ feedback, onRefresh }: FeedbackSection
           <p className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">Feedback System</p>
           <h3 className="mt-2 text-2xl font-semibold text-slate-950">External and internal feedback</h3>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            External feedback is broadly visible. Internal feedback is restricted to HR and Team Lead.
+            External feedback is visible to everyone. Internal feedback stays restricted to HR and Team Lead only.
           </p>
         </div>
 
@@ -158,7 +159,7 @@ export default function FeedbackSection({ feedback, onRefresh }: FeedbackSection
                       item.type === "INTERNAL" ? "bg-violet-100 text-violet-700" : "bg-blue-100 text-blue-700"
                     }`}
                   >
-                    {item.type}
+                    [{item.type}]
                   </span>
                   <span className="text-xs font-medium text-slate-400">
                     {new Date(item.createdAt).toLocaleString()}
@@ -191,12 +192,20 @@ export default function FeedbackSection({ feedback, onRefresh }: FeedbackSection
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm leading-6 text-slate-700 whitespace-pre-wrap">{item.content}</p>
+                  <MarkdownText content={item.content} className="mt-3 text-sm leading-6 text-slate-700" />
                 )}
 
                 {item.author && (
                   <p className="mt-2 text-xs font-medium text-slate-400">
                     By {item.author.name} ({formatRole(item.author.role)})
+                  </p>
+                )}
+
+                {!isEditing && (
+                  <p className="mt-2 text-xs text-slate-400">
+                    {item.type === "INTERNAL"
+                      ? "Visible only to HR and Team Lead. Editable by the author. Deletable by HR only."
+                      : "Visible to everyone. Editable by the author. Deletable by the author or HR."}
                   </p>
                 )}
 

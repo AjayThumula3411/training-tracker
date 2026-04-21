@@ -20,7 +20,7 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
       typeof authHeader === "string" && authHeader.startsWith("Bearer ")
         ? authHeader.slice("Bearer ".length).trim()
         : "";
-    const token = cookieToken || bearerToken;
+    const token = bearerToken || cookieToken;
 
     if (!token) {
       return res.status(401).json({ message: "No token provided" });

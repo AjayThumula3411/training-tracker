@@ -36,6 +36,8 @@ model User {
   // relations
   tasks             Task[]     @relation("AssignedTo")
   assignedTasks     Task[]     @relation("AssignedBy")
+  createdTasks      Task[]     @relation("TaskCreatedBy")
+  updatedTasks      Task[]     @relation("TaskUpdatedBy")
   feedbackReceived  Feedback[] @relation("FeedbackFor")
   feedbackGiven     Feedback[] @relation("FeedbackBy")
 }
@@ -56,7 +58,8 @@ model Notification {
   id        String   @id @default(uuid())
   userId    String
   message   String
-  read      Boolean  @default(false)
+  type      NotificationType
+  isRead    Boolean  @default(false) @map("read")
   createdAt DateTime @default(now())
 }
 
@@ -73,9 +76,9 @@ model AuditLog {
   id        String   @id @default(uuid())
   action    String
   entity    String
-  entityId  String?
-  actorId   String
-  details   Json?
+  targetId  String?  @map("entityId")
+  performedBy String @map("actorId")
+  metadata  Json?    @map("details")
   createdAt DateTime @default(now())
 }
 
@@ -90,6 +93,8 @@ model Task {
 
   assignedToId String
   assignedById String
+  createdById  String
+  updatedById  String
 
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -97,6 +102,8 @@ model Task {
   // relations
   assignedTo   User       @relation("AssignedTo", fields: [assignedToId], references: [id])
   assignedBy   User       @relation("AssignedBy", fields: [assignedById], references: [id])
+  createdBy    User       @relation("TaskCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User       @relation("TaskUpdatedBy", fields: [updatedById], references: [id])
 }
 
 model Feedback {
@@ -149,6 +156,16 @@ enum Priority {
 enum FeedbackType {
   EXTERNAL
   INTERNAL
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_SUBMITTED
+  TASK_REVIEWED
+  TASK_NEEDS_REVISION
+  TASK_COMPLETED
+  EXTERNAL_FEEDBACK_ADDED
+  TRAINING_STATUS_CHANGED
 }
 
 enum MfaMethod {
