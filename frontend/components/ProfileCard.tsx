@@ -3,6 +3,7 @@
 import ProgressBar from "@/components/progressBar";
 import TrainingStatusBadge from "@/components/TrainingStatusBadge";
 import { useAuth } from "@/context/AuthContext";
+import { resolveAssetUrl } from "@/lib/media";
 import { UserProfile } from "@/lib/types";
 
 type ProfileCardProps = {
@@ -25,6 +26,7 @@ export default function ProfileCard({ user }: ProfileCardProps) {
   const { user: viewer } = useAuth();
   const canViewInternalNotes = viewer?.role === "HR" || viewer?.role === "TEAM_LEAD";
   const showsTrainingDetails = user.role === "JUNIOR_DEV" || user.role === "SENIOR_DEV";
+  const photoUrl = resolveAssetUrl(user.photoUrl);
 
   return (
     <section className="premium-panel rounded-[28px] p-6 md:p-8">
@@ -33,8 +35,8 @@ export default function ProfileCard({ user }: ProfileCardProps) {
           <p className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">Profile overview</p>
           <div className="mt-4 flex items-start gap-4">
             <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-[24px] bg-slate-100 text-2xl font-semibold text-slate-600">
-              {user.photoUrl ? (
-                <img src={user.photoUrl} alt={user.name} className="h-full w-full object-cover" />
+              {photoUrl ? (
+                <img src={photoUrl} alt={user.name} className="h-full w-full object-cover" />
               ) : (
                 user.name.charAt(0).toUpperCase()
               )}

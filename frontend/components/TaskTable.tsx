@@ -74,6 +74,13 @@ export default function TaskTable({
     setPendingFiles((current) => ({ ...current, [taskId]: files }));
   };
 
+  const removePendingFile = (taskId: string, fileName: string) => {
+    setPendingFiles((current) => ({
+      ...current,
+      [taskId]: (current[taskId] || []).filter((file) => file.name !== fileName),
+    }));
+  };
+
   const uploadFiles = async (task: Task) => {
     const files = pendingFiles[task.id] || [];
 
@@ -141,6 +148,22 @@ export default function TaskTable({
     }
   };
 
+  const removeAttachment = async (task: Task, attachmentUrl: string) => {
+    try {
+      setBusyTaskId(task.id);
+      await api.delete(`/tasks/${task.id}/attachment`, {
+        data: { attachmentUrl },
+      });
+      toast.success("Attachment removed");
+      onRefresh?.();
+    } catch (error) {
+      const apiError = error as AxiosError<ApiError>;
+      toast.error(apiError.response?.data?.message || "Failed to remove attachment");
+    } finally {
+      setBusyTaskId("");
+    }
+  };
+
   if (!tasks || tasks.length === 0) {
     return (
       <div className="empty-state">
@@ -185,6 +208,7 @@ export default function TaskTable({
             const canEdit = isHr || isTeamLead;
             const canDelete = isHr;
             const canUpload = canDeveloperUpdate && (task.status === "IN_PROGRESS" || task.status === "NEEDS_REVISION");
+            const canManageAttachments = canEdit || canUpload;
             const filesSelected = pendingFiles[task.id]?.length || 0;
             const isBusy = busyTaskId === task.id;
 
@@ -233,15 +257,26 @@ export default function TaskTable({
                   <div className="space-y-2">
                     {task.attachments && task.attachments.length > 0 ? (
                       task.attachments.map((attachment, index) => (
-                        <a
-                          key={`${task.id}-${index}`}
-                          href={attachment}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block text-xs font-medium text-blue-700 underline-offset-2 hover:underline"
-                        >
-                          File {index + 1}
-                        </a>
+                        <div key={`${task.id}-${index}`} className="flex items-center gap-2">
+                          <a
+                            href={attachment}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block text-xs font-medium text-blue-700 underline-offset-2 hover:underline"
+                          >
+                            File {index + 1}
+                          </a>
+                          {canManageAttachments && (
+                            <button
+                              type="button"
+                              onClick={() => removeAttachment(task, attachment)}
+                              disabled={isBusy}
+                              className="text-xs font-medium text-rose-600 transition hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
                       ))
                     ) : (
                       <p className="text-xs text-slate-400">No files</p>
@@ -255,9 +290,24 @@ export default function TaskTable({
                           onChange={(event) => handleFileChange(task.id, event)}
                           className="block w-full text-xs text-slate-500"
                         />
-                        {filesSelected > 0 && (
-                          <p className="text-xs text-slate-500">{filesSelected} file(s) ready for submit</p>
-                        )}
+                        {filesSelected > 0 ? (
+                          <div className="space-y-2">
+                            <p className="text-xs text-slate-500">{filesSelected} file(s) ready for submit</p>
+                            {(pendingFiles[task.id] || []).map((file) => (
+                              <div key={`${task.id}-${file.name}-${file.size}`} className="flex items-center gap-2">
+                                <span className="truncate text-xs text-slate-500">{file.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => removePendingFile(task.id, file.name)}
+                                  disabled={isBusy}
+                                  className="text-xs font-medium text-rose-600 transition hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     )}
                   </div>

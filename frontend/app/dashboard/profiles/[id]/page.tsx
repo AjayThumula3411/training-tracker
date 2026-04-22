@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import ProfileCard from "@/components/ProfileCard";
+import ProfilePhotoUploadField from "@/components/ProfilePhotoUploadField";
 import FeedbackSection from "@/components/FeedbackSection";
 import FeedbackForm from "@/components/FeedbackForm";
 import TaskTable from "@/components/TaskTable";
@@ -27,6 +28,10 @@ const trainingStatuses: TrainingStatus[] = [
 ];
 
 const toInputDate = (value?: string | null) => (value ? new Date(value).toISOString().slice(0, 10) : "");
+
+const compactPayload = <T extends Record<string, unknown>>(payload: T) =>
+  Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined)) as Partial<T>;
+
 export default function ProfileDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -137,23 +142,21 @@ export default function ProfileDetailPage() {
   const isHr = user?.role === "HR";
   const isTeamLead = user?.role === "TEAM_LEAD";
   const isDeveloper = user?.role === "JUNIOR_DEV" || user?.role === "SENIOR_DEV";
+  const isDeveloperProfile = profile.role === "JUNIOR_DEV" || profile.role === "SENIOR_DEV";
   const isSelf = user?.id === id;
-  const canTeamLeadManageThisProfile =
-    Boolean(
-      isTeamLead &&
-      (profile.role === "JUNIOR_DEV" || profile.role === "SENIOR_DEV" || isSelf)
-    );
-  const canEditName = Boolean(isHr || canTeamLeadManageThisProfile || (isDeveloper && isSelf));
-  const canEditPhoto = Boolean(isHr || canTeamLeadManageThisProfile || (isDeveloper && isSelf));
-  const canEditLinks = Boolean(isHr || canTeamLeadManageThisProfile || (isDeveloper && isSelf));
-  const canEditSkills = Boolean(isHr || isTeamLead || (isDeveloper && isSelf));
-  const canEditDepartment = Boolean(isHr);
+  const canTeamLeadEditSelf = Boolean(isTeamLead && isSelf);
+  const canTeamLeadEditDeveloper = Boolean(isTeamLead && isDeveloperProfile);
+  const canEditName = Boolean(isHr || canTeamLeadEditSelf || canTeamLeadEditDeveloper || (isDeveloper && isSelf));
+  const canEditPhoto = Boolean(isHr || canTeamLeadEditSelf || canTeamLeadEditDeveloper || (isDeveloper && isSelf));
+  const canEditLinks = Boolean(isHr || canTeamLeadEditSelf || canTeamLeadEditDeveloper || (isDeveloper && isSelf));
+  const canEditSkills = Boolean(isHr || canTeamLeadEditSelf || canTeamLeadEditDeveloper || (isDeveloper && isSelf));
+  const canEditDepartment = Boolean(isHr || canTeamLeadEditDeveloper);
   const canEditEmail = Boolean(isHr);
   const canEditJoinDate = Boolean(isHr);
   const canEditRole = Boolean(isHr && !isSelf);
-  const canEditNotes = Boolean(isHr || isTeamLead);
-  const canManageTraining = Boolean(isHr || (isTeamLead && !isSelf && (profile.role === "JUNIOR_DEV" || profile.role === "SENIOR_DEV")));
-  const canAssignTasks = Boolean((isHr || isTeamLead) && (profile.role === "JUNIOR_DEV" || profile.role === "SENIOR_DEV"));
+  const canEditNotes = Boolean(isHr || canTeamLeadEditDeveloper);
+  const canManageTraining = Boolean(isHr || canTeamLeadEditDeveloper);
+  const canAssignTasks = Boolean((isHr || isTeamLead) && isDeveloperProfile);
   const canEditProfile =
     canEditName ||
     canEditPhoto ||
@@ -174,7 +177,7 @@ export default function ProfileDetailPage() {
       setSavingProfile(true);
       setError("");
 
-      const payload = {
+      const payload = compactPayload({
         name: canEditName ? profileForm.name.trim() : undefined,
         email: canEditEmail ? profileForm.email.trim() : undefined,
         role: canEditRole ? profileForm.role : undefined,
@@ -190,7 +193,7 @@ export default function ProfileDetailPage() {
         githubUrl: canEditLinks ? profileForm.githubUrl.trim() : undefined,
         linkedinUrl: canEditLinks ? profileForm.linkedinUrl.trim() : undefined,
         internalNotes: canEditNotes ? profileForm.internalNotes.trim() : undefined,
-      };
+      });
 
       const response = await api.patch(`/profile/${id}`, payload);
       const updatedUser = response.data?.user as UserProfile | undefined;
@@ -217,13 +220,13 @@ export default function ProfileDetailPage() {
     try {
       setSavingTraining(true);
       setError("");
-      const response = await api.patch("/profile/training/status", {
+      const response = await api.patch("/profile/training/status", compactPayload({
         id,
         trainingStatus,
         trainingProgress,
         trainingStartDate: trainingStartDate || undefined,
         trainingEndDate: trainingEndDate || undefined,
-      });
+      }));
       const updatedUser = response.data?.user as UserProfile | undefined;
       toast.success("Training progress updated");
       await fetchData();
@@ -304,11 +307,19 @@ export default function ProfileDetailPage() {
                 />
               )}
               {canEditPhoto && (
-                <input
-                  value={profileForm.photoUrl}
-                  onChange={(e) => setProfileForm((current) => ({ ...current, photoUrl: e.target.value }))}
-                  className="field"
-                  placeholder="Profile photo URL"
+                <ProfilePhotoUploadField
+                  photoUrl={profileForm.photoUrl}
+                  name={profileForm.name || profile.name}
+                  uploadPath={`/profile/${id}/photo`}
+                  disabled={savingProfile}
+                  onPhotoChange={(photoUrl) => setProfileForm((current) => ({ ...current, photoUrl }))}
+                  onPhotoUploaded={(photoUrl) => {
+                    setProfile((current) => (current ? { ...current, photoUrl } : current));
+
+                    if (isSelf) {
+                      void fetchUser();
+                    }
+                  }}
                 />
               )}
               {canEditLinks && (
@@ -361,7 +372,9 @@ export default function ProfileDetailPage() {
             <p className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">Training control</p>
             <h3 className="mt-2 text-2xl font-semibold text-slate-950">Update training timeline and status</h3>
             <p className="section-subtitle mt-2">
-              HR and Team Lead can update the training dates and overall training status.
+              {isHr
+                ? "HR can update the training dates and overall training status."
+                : "Team leads can update training progress and status for developer profiles."}
             </p>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">

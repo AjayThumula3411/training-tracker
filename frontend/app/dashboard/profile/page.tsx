@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import ProfileCard from "@/components/ProfileCard";
+import ProfilePhotoUploadField from "@/components/ProfilePhotoUploadField";
 import FeedbackSection from "@/components/FeedbackSection";
 import TaskTable from "@/components/TaskTable";
 import { useAuth } from "@/context/AuthContext";
@@ -20,7 +21,7 @@ const trainingStatuses: TrainingStatus[] = ["NOT_STARTED", "IN_PROGRESS", "ON_HO
 const toInputDate = (value?: string | null) => (value ? new Date(value).toISOString().slice(0, 10) : "");
 
 export default function MyProfilePage() {
-  const { user, loading: authLoading, fetchUser, setUser } = useAuth();
+  const { user, loading: authLoading, fetchUser } = useAuth();
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -126,7 +127,6 @@ export default function MyProfilePage() {
         skills: form.skills.split(",").map((skill) => skill.trim()).filter(Boolean),
         githubUrl: form.githubUrl.trim(),
         linkedinUrl: form.linkedinUrl.trim(),
-        internalNotes: form.internalNotes.trim(),
       };
     }
 
@@ -149,15 +149,8 @@ export default function MyProfilePage() {
     try {
       setSaving(true);
       setError("");
-      const response = await api.patch(`/profile/${profile.id}`, buildPayload());
-      const updatedUser = response.data?.user as UserProfile | undefined;
-
-      if (updatedUser) {
-        setUser(updatedUser);
-      } else {
-        await fetchUser();
-      }
-
+      await api.patch(`/profile/${profile.id}`, buildPayload());
+      await fetchUser();
       await loadPage();
       toast.success("Profile updated");
     } catch (err) {
@@ -202,7 +195,7 @@ export default function MyProfilePage() {
           <p className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">Edit Profile</p>
           <h2 className="mt-2 text-2xl font-semibold text-slate-950">Role-based profile controls</h2>
           <p className="section-subtitle mt-2">
-            Developers can edit only allowed fields. Team Lead can manage training fields, skills, and internal notes. HR has full profile control.
+            Developers can edit only allowed fields. Team leads can edit only their own basic details. HR has full profile control.
           </p>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -218,8 +211,18 @@ export default function MyProfilePage() {
             {canEditAll && (
               <input type="date" value={form.joinDate} onChange={(e) => setForm((current) => ({ ...current, joinDate: e.target.value }))} className="field" />
             )}
-            {canEditOwnIdentityFields && (
-              <input value={form.photoUrl} onChange={(e) => setForm((current) => ({ ...current, photoUrl: e.target.value }))} className="field" placeholder="Profile photo URL" />
+            {canEditOwnIdentityFields && profile && (
+              <ProfilePhotoUploadField
+                photoUrl={form.photoUrl}
+                name={form.name || profile.name}
+                uploadPath={`/profile/${profile.id}/photo`}
+                disabled={saving}
+                onPhotoChange={(photoUrl) => setForm((current) => ({ ...current, photoUrl }))}
+                onPhotoUploaded={(photoUrl) => {
+                  setProfile((current) => (current ? { ...current, photoUrl } : current));
+                  void fetchUser();
+                }}
+              />
             )}
             {canEditOwnIdentityFields && (
               <input value={form.githubUrl} onChange={(e) => setForm((current) => ({ ...current, githubUrl: e.target.value }))} className="field" placeholder="GitHub URL" />
@@ -253,7 +256,7 @@ export default function MyProfilePage() {
             />
           )}
 
-          {(canEditAll || canEditTeamLeadFields) && (
+          {canEditAll && (
             <textarea
               value={form.internalNotes}
               onChange={(e) => setForm((current) => ({ ...current, internalNotes: e.target.value }))}

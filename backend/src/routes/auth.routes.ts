@@ -1,5 +1,13 @@
 import express from "express";
-import { register, requestLoginOtp, verifyLoginOtp } from "../controllers/auth.controller";
+import {
+  disableGoogleAuthenticator,
+  register,
+  requestLoginOtp,
+  setupGoogleAuthenticator,
+  verifyLoginGoogleAuthenticator,
+  verifyGoogleAuthenticator,
+  verifyLoginOtp,
+} from "../controllers/auth.controller";
 import { authenticate, AuthRequest } from "../middleware/auth.middleware";
 import prisma from "../prisma/client";
 
@@ -14,6 +22,10 @@ const AUTH_COOKIE_OPTIONS = {
 router.post("/register", register);
 router.post("/login", requestLoginOtp);
 router.post("/verify-otp", verifyLoginOtp);
+router.post("/verify-google-authenticator", verifyLoginGoogleAuthenticator);
+router.post("/mfa/google-authenticator/setup", authenticate, setupGoogleAuthenticator);
+router.post("/mfa/google-authenticator/verify", authenticate, verifyGoogleAuthenticator);
+router.post("/mfa/google-authenticator/disable", authenticate, disableGoogleAuthenticator);
 
 router.post("/logout", (req, res) => {
   res.clearCookie("token", AUTH_COOKIE_OPTIONS);

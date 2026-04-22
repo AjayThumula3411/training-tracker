@@ -1,8 +1,12 @@
 import { Response } from "express";
+import fs from "fs/promises";
+import path from "path";
+import { randomUUID } from "crypto";
 import { NotificationType, Priority, Role, TaskStatus } from "@prisma/client";
 import prisma from "../prisma/client";
 import { AuthRequest } from "../middleware/auth.middleware";
 import { createAuditLog, createNotification } from "../utils/activity";
+import { sendTaskAssignedEmail, sendTaskSubmittedEmail } from "../utils/mail";
 
 const developerRoles: Role[] = [Role.JUNIOR_DEV, Role.SENIOR_DEV];
 
@@ -13,6 +17,12 @@ const isManager = (role: Role) => isHr(role) || isTeamLead(role);
 
 const validPriorities = Object.values(Priority);
 const validTaskStatuses = Object.values(TaskStatus);
+const supportedAttachmentTypes = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+const supportedAttachmentExtensions = new Set([".pdf", ".doc", ".docx"]);
 
 const parseOptionalDate = (value: unknown) => {
   if (value === undefined) return undefined;
@@ -30,8 +40,17 @@ const parseOptionalDate = (value: unknown) => {
   return parsed;
 };
 
-const formatStatus = (status: TaskStatus) =>
-  status
+const parseAttachments = (value: unknown) => {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    throw new Error("Attachments must be an array of strings");
+  }
+
+  return value.map((entry) => entry.trim()).filter(Boolean);
+};
+
+const formatLabel = (value: string) =>
+  value
     .toLowerCase()
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -56,11 +75,127 @@ const runSideEffect = async (label: string, effect: () => Promise<void>) => {
   }
 };
 
+const getBaseUrl = (req: AuthRequest) => `${req.protocol}://${req.get("host")}`;
+
+const isAttachmentAllowed = (fileName: string, mimeType: string) => {
+  const extension = path.extname(fileName).toLowerCase();
+  return supportedAttachmentTypes.has(mimeType) || supportedAttachmentExtensions.has(extension);
+};
+
+const getTaskAttachmentsDirectory = (taskId: string) =>
+  path.resolve(process.cwd(), "uploads", "task-attachments", taskId);
+
+const getTaskAttachmentRelativePrefix = (taskId: string) => `/uploads/task-attachments/${taskId}/`;
+
+const getTaskAttachmentUrls = async (taskId: string, req: AuthRequest) => {
+  try {
+    const files = await fs.readdir(getTaskAttachmentsDirectory(taskId), { withFileTypes: true });
+
+    return files
+      .filter((entry) => entry.isFile())
+      .map((entry) => `${getBaseUrl(req)}/uploads/task-attachments/${taskId}/${encodeURIComponent(entry.name)}`)
+      .sort((left, right) => left.localeCompare(right));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+
+    throw error;
+  }
+};
+
+const withTaskAttachments = async <T extends { id: string }>(task: T, req: AuthRequest) => {
+  const storedAttachments = Array.isArray((task as { attachments?: string[] }).attachments)
+    ? (task as { attachments?: string[] }).attachments ?? []
+    : [];
+  const uploadedAttachments = await getTaskAttachmentUrls(task.id, req);
+
+  return {
+    ...task,
+    attachments: [...new Set([...storedAttachments, ...uploadedAttachments])],
+  };
+};
+
+const withTasksAttachments = async <T extends { id: string }>(tasks: T[], req: AuthRequest) =>
+  Promise.all(tasks.map((task) => withTaskAttachments(task, req)));
+
+const canManageTaskAttachments = (user: AuthRequest["user"], task: { assignedToId: string; status: TaskStatus }) => {
+  if (!user) return false;
+
+  if (isManager(user.role)) {
+    return true;
+  }
+
+  const developerUploadableStatuses: TaskStatus[] = [TaskStatus.IN_PROGRESS, TaskStatus.NEEDS_REVISION];
+
+  return (
+    isDeveloper(user.role) &&
+    task.assignedToId === user.id &&
+    developerUploadableStatuses.includes(task.status)
+  );
+};
+
+const getAttachmentFileNameFromUrl = (attachmentUrl: string, taskId: string) => {
+  const relativePrefix = getTaskAttachmentRelativePrefix(taskId);
+
+  try {
+    const parsedUrl = new URL(attachmentUrl);
+    if (!parsedUrl.pathname.startsWith(relativePrefix)) {
+      return null;
+    }
+
+    return decodeURIComponent(parsedUrl.pathname.slice(relativePrefix.length));
+  } catch {
+    if (!attachmentUrl.startsWith(relativePrefix)) {
+      return null;
+    }
+
+    return decodeURIComponent(attachmentUrl.slice(relativePrefix.length));
+  }
+};
+
+const notifyManagersAboutTaskSubmission = async (
+  task: NonNullable<Awaited<ReturnType<typeof getTaskWithRelations>>>
+) => {
+  const managers = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      role: {
+        in: [Role.HR, Role.TEAM_LEAD],
+      },
+    },
+    select: {
+      id: true,
+      email: true,
+    },
+  });
+
+  const message = `Task submitted for review: ${task.title}`;
+
+  await Promise.all(
+    managers.map((manager) =>
+      runSideEffect(`TASK_SUBMITTED notification for ${manager.id}`, () =>
+        createNotification(manager.id, message, NotificationType.TASK_SUBMITTED)
+      )
+    )
+  );
+
+  await runSideEffect("TASK_SUBMITTED email", async () => {
+    await sendTaskSubmittedEmail({
+      recipients: managers.map((manager) => manager.email),
+      taskTitle: task.title,
+      submittedBy: task.assignedTo?.name || "Developer",
+      assignedBy: task.assignedBy?.name,
+      taskStatus: formatLabel(TaskStatus.SUBMITTED),
+    });
+  });
+};
+
 export const createTask = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) return res.status(401).json({ message: "Unauthorized" });
 
-    const { title, description, priority, dueDate, assignedToId } = req.body;
+    const { title, description, priority, dueDate, assignedToId, attachments } = req.body;
     const user = req.user;
 
     if (!isManager(user.role)) {
@@ -75,6 +210,7 @@ export const createTask = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: "Invalid priority" });
     }
 
+    const parsedAttachments = parseAttachments(attachments) ?? [];
     const assignee = await prisma.user.findUnique({ where: { id: assignedToId } });
 
     if (!assignee || !assignee.isActive || !isDeveloper(assignee.role)) {
@@ -85,6 +221,7 @@ export const createTask = async (req: AuthRequest, res: Response) => {
       data: {
         title: title.trim(),
         description: description.trim(),
+        attachments: parsedAttachments,
         priority,
         dueDate: parseOptionalDate(dueDate),
         assignedToId,
@@ -112,11 +249,22 @@ export const createTask = async (req: AuthRequest, res: Response) => {
     );
 
     const createdTask = await getTaskWithRelations(task.id);
-    res.status(201).json(createdTask);
+    await runSideEffect("TASK_ASSIGNED email", async () => {
+      await sendTaskAssignedEmail({
+        recipient: assignee.email,
+        taskTitle: task.title,
+        description: task.description,
+        priority: formatLabel(task.priority),
+        dueDate: task.dueDate ? task.dueDate.toISOString().slice(0, 10) : null,
+        assignedBy: createdTask?.assignedBy?.name,
+        attachments: parsedAttachments,
+      });
+    });
+    res.status(201).json(createdTask ? await withTaskAttachments(createdTask, req) : createdTask);
   } catch (error) {
     console.error(error);
     const message = error instanceof Error ? error.message : "Error creating task";
-    res.status(message.includes("Due date") ? 400 : 500).json({ message });
+    res.status(message.includes("Due date") || message.includes("Attachments") ? 400 : 500).json({ message });
   }
 };
 
@@ -170,7 +318,7 @@ export const getAllTasks = async (req: AuthRequest, res: Response) => {
       orderBy: { createdAt: "desc" },
     });
 
-    res.json(tasks);
+    res.json(await withTasksAttachments(tasks, req));
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error fetching tasks" });
@@ -198,7 +346,7 @@ export const getTasksByDeveloper = async (req: AuthRequest, res: Response) => {
       orderBy: { createdAt: "desc" },
     });
 
-    res.json(tasks);
+    res.json(await withTasksAttachments(tasks, req));
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error fetching tasks" });
@@ -210,7 +358,7 @@ export const updateTaskDetails = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ message: "Unauthorized" });
 
     const { id } = req.params;
-    const { title, description, priority, dueDate, assignedToId } = req.body;
+    const { title, description, priority, dueDate, assignedToId, attachments } = req.body;
     const user = req.user;
 
     if (!isManager(user.role)) {
@@ -227,6 +375,8 @@ export const updateTaskDetails = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: "Invalid priority" });
     }
 
+    const parsedAttachments = parseAttachments(attachments);
+
     if (assignedToId) {
       const assignee = await prisma.user.findUnique({ where: { id: assignedToId } });
       if (!assignee || !assignee.isActive || !isDeveloper(assignee.role)) {
@@ -239,6 +389,7 @@ export const updateTaskDetails = async (req: AuthRequest, res: Response) => {
       data: {
         title: title?.trim() || existingTask.title,
         description: description?.trim() || existingTask.description,
+        attachments: parsedAttachments ?? existingTask.attachments,
         priority: priority || existingTask.priority,
         dueDate: dueDate === undefined ? existingTask.dueDate : parseOptionalDate(dueDate),
         assignedToId: assignedToId || existingTask.assignedToId,
@@ -283,11 +434,11 @@ export const updateTaskDetails = async (req: AuthRequest, res: Response) => {
       )
     );
 
-    res.json(updatedTask);
+    res.json(await withTaskAttachments(updatedTask, req));
   } catch (error) {
     console.error(error);
     const message = error instanceof Error ? error.message : "Error updating task";
-    res.status(message.includes("Due date") ? 400 : 500).json({ message });
+    res.status(message.includes("Due date") || message.includes("Attachments") ? 400 : 500).json({ message });
   }
 };
 
@@ -326,6 +477,137 @@ export const deleteTask = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const uploadTaskAttachment = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const { taskId, fileName, mimeType, contentBase64 } = req.body as {
+      taskId?: string;
+      fileName?: string;
+      mimeType?: string;
+      contentBase64?: string;
+    };
+
+    if (!taskId || !fileName?.trim() || !contentBase64?.trim()) {
+      return res.status(400).json({ message: "Task, file name, and file content are required" });
+    }
+
+    const normalizedMimeType = mimeType?.trim() || "application/octet-stream";
+
+    if (!isAttachmentAllowed(fileName, normalizedMimeType)) {
+      return res.status(400).json({ message: "Only PDF, DOC, and DOCX files are allowed" });
+    }
+
+    const task = await prisma.task.findUnique({ where: { id: taskId } });
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    if (isDeveloper(req.user.role)) {
+      if (task.assignedToId !== req.user.id) {
+        return res.status(403).json({ message: "Only the assigned developer can upload task files" });
+      }
+
+      const uploadableStatuses: TaskStatus[] = [TaskStatus.IN_PROGRESS, TaskStatus.NEEDS_REVISION];
+
+      if (!uploadableStatuses.includes(task.status)) {
+        return res.status(400).json({ message: "Files can only be uploaded while the task is in progress or under revision" });
+      }
+    } else if (!isManager(req.user.role)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const fileBuffer = Buffer.from(contentBase64, "base64");
+
+    if (!fileBuffer.length) {
+      return res.status(400).json({ message: "Uploaded file is empty" });
+    }
+
+    const safeExtension = path.extname(fileName).toLowerCase() || ".bin";
+    const storedFileName = `${randomUUID()}${safeExtension}`;
+    const uploadsDirectory = getTaskAttachmentsDirectory(task.id);
+    await fs.mkdir(uploadsDirectory, { recursive: true });
+
+    const filePath = path.join(uploadsDirectory, storedFileName);
+    await fs.writeFile(filePath, fileBuffer);
+
+    const attachmentUrl = `${getBaseUrl(req)}/uploads/task-attachments/${task.id}/${encodeURIComponent(storedFileName)}`;
+
+    res.status(201).json({
+      message: "Task attachment uploaded",
+      attachment: attachmentUrl,
+      attachments: await getTaskAttachmentUrls(task.id, req),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Unable to upload task file" });
+  }
+};
+
+export const removeTaskAttachment = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const { id } = req.params;
+    const { attachmentUrl } = req.body as { attachmentUrl?: string };
+
+    if (!id || !attachmentUrl?.trim()) {
+      return res.status(400).json({ message: "Task id and attachment URL are required" });
+    }
+
+    const task = await prisma.task.findUnique({ where: { id } });
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    if (!canManageTaskAttachments(req.user, task)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const normalizedAttachmentUrl = attachmentUrl.trim();
+    let removedAnyAttachment = false;
+
+    if (task.attachments.includes(normalizedAttachmentUrl)) {
+      await prisma.task.update({
+        where: { id: task.id },
+        data: {
+          attachments: task.attachments.filter((entry) => entry !== normalizedAttachmentUrl),
+          updatedById: req.user.id,
+        },
+      });
+      removedAnyAttachment = true;
+    }
+
+    const fileName = getAttachmentFileNameFromUrl(normalizedAttachmentUrl, task.id);
+
+    if (fileName) {
+      try {
+        await fs.unlink(path.join(getTaskAttachmentsDirectory(task.id), fileName));
+        removedAnyAttachment = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw error;
+        }
+      }
+    }
+
+    if (!removedAnyAttachment) {
+      return res.status(404).json({ message: "Attachment not found" });
+    }
+
+    const updatedTask = await getTaskWithRelations(task.id);
+    res.json({
+      message: "Attachment removed",
+      task: updatedTask ? await withTaskAttachments(updatedTask, req) : updatedTask,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Unable to remove task file" });
+  }
+};
+
 export const updateTaskStatus = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) return res.status(401).json({ message: "Unauthorized" });
@@ -348,10 +630,6 @@ export const updateTaskStatus = async (req: AuthRequest, res: Response) => {
     if (!task) {
       return res.status(404).json({ message: "Task not found" });
     }
-
-    console.log("User Role:", user.role);
-    console.log("Task Assigned To:", task.assignedToId);
-    console.log("New Status:", status);
 
     const developerTransitions: Record<TaskStatus, TaskStatus[]> = {
       ASSIGNED: [TaskStatus.IN_PROGRESS],
@@ -413,9 +691,7 @@ export const updateTaskStatus = async (req: AuthRequest, res: Response) => {
     });
 
     if (status === TaskStatus.SUBMITTED) {
-      await runSideEffect("TASK_SUBMITTED notification", () =>
-        createNotification(task.assignedById, `Task submitted for review: ${task.title}`, NotificationType.TASK_SUBMITTED)
-      );
+      await notifyManagersAboutTaskSubmission(updatedTask);
     }
 
     if (status === TaskStatus.REVIEWED) {
@@ -447,13 +723,13 @@ export const updateTaskStatus = async (req: AuthRequest, res: Response) => {
         {
           from: task.status,
           to: status,
-          label: formatStatus(status),
+          label: formatLabel(status),
         },
         "Task"
       )
     );
 
-    res.json(updatedTask);
+    res.json(await withTaskAttachments(updatedTask, req));
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error updating status" });

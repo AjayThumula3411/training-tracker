@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import toast from "react-hot-toast";
 import { AxiosError } from "axios";
+import ProfilePhotoUploadField from "@/components/ProfilePhotoUploadField";
 
 type ApiError = {
   message?: string;
@@ -75,11 +76,12 @@ export default function SetupProfilePage() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
 
-              <input
-                className="field"
-                placeholder="Profile photo URL"
-                value={form.photoUrl}
-                onChange={(e) => setForm({ ...form, photoUrl: e.target.value })}
+              <ProfilePhotoUploadField
+                photoUrl={form.photoUrl}
+                name={form.name}
+                uploadPath="/profile/photo"
+                disabled={loading}
+                onPhotoChange={(photoUrl) => setForm((current) => ({ ...current, photoUrl }))}
               />
 
               <input

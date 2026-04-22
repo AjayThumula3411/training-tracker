@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
+import { resolveAssetUrl } from "@/lib/media";
 import { UserProfile } from "@/lib/types";
 
 const roleLabel = (role?: string) =>
@@ -107,7 +108,7 @@ export default function ProfilesPage() {
                 <div className="flex items-center gap-4">
                   <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 text-lg font-semibold text-slate-600">
                     {profile.photoUrl ? (
-                      <img src={profile.photoUrl} alt={profile.name} className="h-full w-full object-cover" />
+                      <img src={resolveAssetUrl(profile.photoUrl)} alt={profile.name} className="h-full w-full object-cover" />
                     ) : (
                       profile.name.charAt(0).toUpperCase()
                     )}

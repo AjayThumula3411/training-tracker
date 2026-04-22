@@ -7,6 +7,8 @@ import {
   getTasksByDeveloper,
   updateTaskDetails,
   deleteTask,
+  uploadTaskAttachment,
+  removeTaskAttachment,
 } from "../controllers/task.controller";
 
 import { authenticate } from "../middleware/auth.middleware";
@@ -54,6 +56,20 @@ router.delete(
   authenticate,
   authorizeRoles("HR"),
   deleteTask
+);
+
+router.post(
+  "/upload",
+  authenticate,
+  authorizeRoles("HR", "TEAM_LEAD", "JUNIOR_DEV", "SENIOR_DEV"),
+  uploadTaskAttachment
+);
+
+router.delete(
+  "/:id/attachment",
+  authenticate,
+  authorizeRoles("HR", "TEAM_LEAD", "JUNIOR_DEV", "SENIOR_DEV"),
+  removeTaskAttachment
 );
 
 // ================= UPDATE STATUS =================

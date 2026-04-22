@@ -16,6 +16,8 @@ model User {
   isActive          Boolean    @default(true)
   mfaEnabled        Boolean    @default(true)
   mfaMethod         MfaMethod  @default(EMAIL_OTP)
+  mfaSecret         String?
+  mfaTempSecret     String?
 
   department        String?
   photoUrl          String?
@@ -86,6 +88,7 @@ model Task {
   id           String     @id @default(uuid())
   title        String
   description  String
+  attachments  String[]   @default([])
 
   priority     Priority   @default(MEDIUM)
   status       TaskStatus @default(ASSIGNED)
@@ -170,4 +173,5 @@ enum NotificationType {
 
 enum MfaMethod {
   EMAIL_OTP
+  GOOGLE_AUTHENTICATOR
 }

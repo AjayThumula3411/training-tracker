@@ -14,7 +14,7 @@ import {
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
-import { DashboardSummary, Role } from "@/lib/types";
+import { DashboardSummary, MfaMethod, Role } from "@/lib/types";
 
 const roleLabel = (role?: string) =>
   role
@@ -26,6 +26,12 @@ const roleLabel = (role?: string) =>
     : "Workspace User";
 
 const isDeveloperRole = (role?: Role) => role === "JUNIOR_DEV" || role === "SENIOR_DEV";
+const mfaLabel = (mfaEnabled?: boolean, mfaMethod?: MfaMethod) => {
+  if (!mfaEnabled) return "Not configured";
+  if (mfaMethod === "GOOGLE_AUTHENTICATOR") return "Google Authenticator";
+  if (mfaMethod === "EMAIL_OTP") return "Email OTP required";
+  return "Not configured";
+};
 
 export default function Dashboard() {
   const { user, loading, fetchUser } = useAuth();
@@ -184,10 +190,7 @@ function DeveloperDashboard({
                   },
                   {
                     label: "MFA",
-                    value:
-                      user?.mfaEnabled && user?.mfaMethod === "EMAIL_OTP"
-                        ? "Email OTP required"
-                        : "Not configured",
+                    value: mfaLabel(user?.mfaEnabled, user?.mfaMethod),
                   },
                 ].map((item) => (
                   <div key={item.label} className="glass-card-dark rounded-2xl px-4 py-3">
@@ -414,10 +417,7 @@ function AdminDashboard({
                   },
                   {
                     label: "MFA",
-                    value:
-                      user?.mfaEnabled && user?.mfaMethod === "EMAIL_OTP"
-                        ? "Email OTP required"
-                        : "Not configured",
+                    value: mfaLabel(user?.mfaEnabled, user?.mfaMethod),
                   },
                 ].map((item) => (
                   <div key={item.label} className="glass-card-dark rounded-2xl px-4 py-3">

@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AxiosError } from "axios";
-import { FaEnvelope, FaLock, FaShieldAlt, FaKey } from "react-icons/fa";
+import { FaEnvelope, FaKey, FaLock, FaShieldAlt } from "react-icons/fa";
+import QRCode from "react-qr-code";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import Input from "@/components/Input";
@@ -15,13 +16,25 @@ type ApiError = {
   message?: string;
 };
 
-type LoginOtpResponse = {
+type LoginResponse = {
   message: string;
   email: string;
-  expiresInMinutes: number;
+  expiresInMinutes?: number;
+  challengeToken: string;
 };
 
 type VerifyOtpResponse = {
+  message: string;
+  email: string;
+  challengeToken: string;
+  setupRequired: boolean;
+  secret?: string;
+  otpAuthUri?: string;
+  issuer?: string;
+  accountName?: string;
+};
+
+type VerifyGoogleAuthenticatorResponse = {
   message: string;
   token: string;
   user: {
@@ -31,39 +44,86 @@ type VerifyOtpResponse = {
   };
 };
 
+type LoginStep = 1 | 2 | 3;
+
 export default function LoginPage() {
   const router = useRouter();
   const { fetchUser, setUser, user, loading: authLoading } = useAuth();
 
   const [email, setEmail] = useState("");
-  const [otpEmail, setOtpEmail] = useState("");
+  const [loginEmail, setLoginEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [otp, setOtp] = useState("");
+  const [emailOtp, setEmailOtp] = useState("");
+  const [googleCode, setGoogleCode] = useState("");
+  const [emailChallengeToken, setEmailChallengeToken] = useState("");
+  const [googleChallengeToken, setGoogleChallengeToken] = useState("");
+  const [googleSetup, setGoogleSetup] = useState<{
+    setupRequired: boolean;
+    secret?: string;
+    otpAuthUri?: string;
+    issuer?: string;
+    accountName?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<LoginStep>(1);
 
   const requestOtp = async () => {
     try {
       setLoading(true);
-      const res = await api.post<LoginOtpResponse>("/auth/login", { email, password });
+      const res = await api.post<LoginResponse>("/auth/login", { email, password });
+      setLoginEmail(res.data.email);
       setEmail(res.data.email);
-      setOtpEmail(res.data.email);
-      setOtp("");
+      setEmailOtp("");
+      setGoogleCode("");
+      setEmailChallengeToken(res.data.challengeToken);
+      setGoogleChallengeToken("");
+      setGoogleSetup(null);
       setStep(2);
       toast.success(res.data.message || "OTP sent to your email");
     } catch (err) {
       const error = err as AxiosError<ApiError>;
-      const message = error.response?.data?.message || "Unable to send OTP";
-      toast.error(message);
+      toast.error(error.response?.data?.message || "Unable to send OTP");
     } finally {
       setLoading(false);
     }
   };
 
-  const verifyOtp = async () => {
+  const verifyEmailOtp = async () => {
     try {
       setLoading(true);
-      const res = await api.post<VerifyOtpResponse>("/auth/verify-otp", { email: otpEmail || email, otp });
+      const res = await api.post<VerifyOtpResponse>("/auth/verify-otp", {
+        challengeToken: emailChallengeToken,
+        email: loginEmail || email,
+        otp: emailOtp,
+      });
+
+      setGoogleChallengeToken(res.data.challengeToken);
+      setGoogleCode("");
+      setGoogleSetup({
+        setupRequired: res.data.setupRequired,
+        secret: res.data.secret,
+        otpAuthUri: res.data.otpAuthUri,
+        issuer: res.data.issuer,
+        accountName: res.data.accountName,
+      });
+      setStep(3);
+      toast.success(res.data.message || "Continue with Google Authenticator");
+    } catch (err) {
+      const error = err as AxiosError<ApiError>;
+      toast.error(error.response?.data?.message || "OTP verification failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyGoogleAuthenticator = async () => {
+    try {
+      setLoading(true);
+      const res = await api.post<VerifyGoogleAuthenticatorResponse>("/auth/verify-google-authenticator", {
+        challengeToken: googleChallengeToken,
+        otp: googleCode,
+      });
+
       storeAuthToken(res.data.token);
       setUser({
         id: res.data.user.id,
@@ -76,7 +136,7 @@ export default function LoginPage() {
       router.replace("/dashboard");
     } catch (err) {
       const error = err as AxiosError<ApiError>;
-      toast.error(error.response?.data?.message || "OTP verification failed");
+      toast.error(error.response?.data?.message || "Google Authenticator verification failed");
     } finally {
       setLoading(false);
     }
@@ -88,7 +148,7 @@ export default function LoginPage() {
     }
   }, [authLoading, router, user]);
 
-  const progressValue = step === 1 ? 50 : 100;
+  const progressValue = step === 1 ? 34 : step === 2 ? 67 : 100;
 
   return (
     <div className="auth-shell">
@@ -104,9 +164,9 @@ export default function LoginPage() {
           </p>
 
           <div className="mt-10 space-y-4">
-            {[ 
+            {[
+              "Password, email OTP, and Google Authenticator in one guided flow",
               "Role-aware access for HR, leads, and developers",
-              "One view for assignments, feedback, and status",
               "Audit-ready workspace for operational changes",
             ].map((item) => (
               <div key={item} className="glass-card-dark flex items-start gap-3 rounded-2xl px-4 py-4">
@@ -124,13 +184,14 @@ export default function LoginPage() {
             <p className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">Welcome back</p>
             <h2 className="mt-2 text-3xl font-semibold text-slate-950">Sign in to your workspace</h2>
             <p className="mt-3 text-sm leading-6 text-slate-500">
-              Use your team credentials, then verify the OTP sent to your email.
+              Finish all three checks in sequence: password, email OTP, then Google Authenticator.
             </p>
 
             <div className="mt-6 space-y-3">
               <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
                 <span>Credentials</span>
                 <span>Email OTP</span>
+                <span>Authenticator</span>
               </div>
               <div className="h-3 overflow-hidden rounded-full bg-slate-200">
                 <div
@@ -139,18 +200,20 @@ export default function LoginPage() {
                 />
               </div>
               <p className="text-sm text-slate-500">
-                {step === 1 ? "Step 1 of 2: verify your credentials" : "Step 2 of 2: enter the email OTP"}
+                {step === 1 && "Step 1 of 3: verify your credentials"}
+                {step === 2 && "Step 2 of 3: enter the email OTP"}
+                {step === 3 && "Step 3 of 3: enter the Google Authenticator code"}
               </p>
             </div>
 
             <div className="mt-8 space-y-4">
-              {step === 1 ? (
+              {step === 1 && (
                 <>
                   <Input
                     icon={<FaEnvelope />}
                     placeholder="Email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(event) => setEmail(event.target.value)}
                     autoComplete="email"
                   />
 
@@ -159,50 +222,119 @@ export default function LoginPage() {
                     type="password"
                     placeholder="Password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(event) => setPassword(event.target.value)}
                     autoComplete="current-password"
                   />
 
                   <button onClick={requestOtp} disabled={loading} className="btn-primary w-full">
-                    {loading ? "Sending OTP..." : "Send OTP"}
+                    {loading ? "Continuing..." : "Continue"}
                   </button>
                 </>
-              ) : (
+              )}
+
+              {step === 2 && (
                 <>
                   <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-                    OTP sent to <span className="font-semibold">{otpEmail || email}</span>.
+                    OTP sent to <span className="font-semibold">{loginEmail || email}</span>.
                   </div>
 
                   <Input
                     icon={<FaKey />}
-                    placeholder="Enter 6-digit OTP"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
+                    placeholder="Enter 6-digit email OTP"
+                    value={emailOtp}
+                    onChange={(event) => setEmailOtp(event.target.value)}
                     autoComplete="one-time-code"
                   />
 
-                  <button onClick={verifyOtp} disabled={loading || otp.trim().length < 6} className="btn-primary w-full">
-                    {loading ? "Verifying OTP..." : "Verify OTP"}
+                  <button
+                    onClick={verifyEmailOtp}
+                    disabled={loading || emailOtp.trim().length < 6}
+                    className="btn-primary w-full"
+                  >
+                    {loading ? "Verifying OTP..." : "Verify Email OTP"}
                   </button>
 
-                  <button
-                    onClick={requestOtp}
-                    disabled={loading}
-                    className="btn-secondary w-full"
-                  >
+                  <button onClick={requestOtp} disabled={loading} className="btn-secondary w-full">
                     Resend OTP
                   </button>
 
                   <button
                     onClick={() => {
                       setStep(1);
-                      setOtp("");
-                      setOtpEmail("");
+                      setEmailOtp("");
+                      setEmailChallengeToken("");
                     }}
                     disabled={loading}
                     className="w-full text-sm font-semibold text-slate-500"
                   >
                     Back to credentials
+                  </button>
+                </>
+              )}
+
+              {step === 3 && (
+                <>
+                  {googleSetup?.otpAuthUri ? (
+                    <div className="space-y-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
+                      <p className="font-semibold text-emerald-900">
+                        {googleSetup.setupRequired
+                          ? "Scan Google Authenticator to finish login"
+                          : "Google Authenticator scanner"}
+                      </p>
+                      <p>
+                        Scan the QR code in Google Authenticator, then enter the generated 6-digit code to complete login.
+                      </p>
+                      <div className="flex justify-center rounded-2xl border border-emerald-200 bg-white p-4">
+                        <QRCode
+                          value={googleSetup.otpAuthUri}
+                          size={180}
+                          bgColor="#ffffff"
+                          fgColor="#0f172a"
+                        />
+                      </div>
+                      <p>
+                        Account: <span className="font-semibold">{googleSetup.accountName || loginEmail || email}</span>
+                      </p>
+                      <p>
+                        Issuer: <span className="font-semibold">{googleSetup.issuer || "Training Tracker"}</span>
+                      </p>
+                      <p className="break-all">
+                        Manual setup key: <span className="font-semibold">{googleSetup.secret}</span>
+                      </p>
+                      <p className="break-all text-xs text-emerald-700">OTP URI: {googleSetup.otpAuthUri}</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                      Open Google Authenticator and enter the 6-digit code for <span className="font-semibold">{loginEmail || email}</span>.
+                    </div>
+                  )}
+
+                  <Input
+                    icon={<FaKey />}
+                    placeholder="Enter 6-digit Google Authenticator code"
+                    value={googleCode}
+                    onChange={(event) => setGoogleCode(event.target.value)}
+                    autoComplete="one-time-code"
+                  />
+
+                  <button
+                    onClick={verifyGoogleAuthenticator}
+                    disabled={loading || googleCode.trim().length < 6}
+                    className="btn-primary w-full"
+                  >
+                    {loading ? "Verifying Authenticator..." : "Verify Google Authenticator"}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setStep(2);
+                      setGoogleCode("");
+                      setGoogleChallengeToken("");
+                    }}
+                    disabled={loading}
+                    className="w-full text-sm font-semibold text-slate-500"
+                  >
+                    Back to email OTP
                   </button>
                 </>
               )}

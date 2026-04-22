@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AxiosError } from "axios";
 import Navbar from "@/components/Navbar";
 import TaskTable from "@/components/TaskTable";
 import AssignTaskModal from "@/components/AssignTaskModal";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/lib/api";
+import { storeAuthToken } from "@/lib/auth-storage";
 import { Task } from "@/lib/types";
 
 export default function TasksPage() {
@@ -26,6 +28,14 @@ export default function TasksPage() {
       const res = await api.get("/tasks");
       setTasks(res.data);
     } catch (err) {
+      const status = (err as AxiosError)?.response?.status;
+
+      if (status === 401 || status === 403) {
+        storeAuthToken(null);
+        router.push("/login");
+        return;
+      }
+
       console.error("Error fetching tasks", err);
       setError("Unable to load tasks right now.");
     } finally {

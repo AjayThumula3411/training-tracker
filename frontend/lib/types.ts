@@ -1,5 +1,5 @@
 export type Role = "JUNIOR_DEV" | "SENIOR_DEV" | "TEAM_LEAD" | "HR";
-export type MfaMethod = "EMAIL_OTP";
+export type MfaMethod = "EMAIL_OTP" | "GOOGLE_AUTHENTICATOR";
 
 export type TrainingStatus =
   | "NOT_STARTED"

@@ -1,3 +1,6 @@
+import { randomUUID } from "crypto";
+import { promises as fs } from "fs";
+import path from "path";
 import { Response } from "express";
 import { NotificationType, Role, TaskStatus, TrainingStatus } from "@prisma/client";
 import prisma from "../prisma/client";
@@ -6,6 +9,13 @@ import { createAuditLog, createNotification } from "../utils/activity";
 
 const developerRoles: Role[] = [Role.JUNIOR_DEV, Role.SENIOR_DEV];
 const trainingStatuses = Object.values(TrainingStatus);
+const profilePhotoMimeTypes: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+const maxProfilePhotoSizeBytes = 5 * 1024 * 1024;
 
 const publicProfileSelect = {
   id: true,
@@ -177,7 +187,11 @@ const validateRequestedFields = (payload: Record<string, unknown>, allowedFields
   return null;
 };
 
-const buildAllowedFieldSet = (viewer: AuthRequest["user"], targetUserId: string) => {
+const buildAllowedFieldSet = (
+  viewer: AuthRequest["user"],
+  targetUserId: string,
+  targetRole?: Role
+) => {
   const allowedFields = new Set<string>();
 
   if (!viewer) return allowedFields;
@@ -196,14 +210,26 @@ const buildAllowedFieldSet = (viewer: AuthRequest["user"], targetUserId: string)
   }
 
   if (viewer.role === Role.TEAM_LEAD) {
-    ["name", "photoUrl", "skills", "githubUrl", "linkedinUrl", "internalNotes"].forEach((field) =>
-      allowedFields.add(field)
-    );
+    const isDeveloperTarget = isDeveloper(targetRole);
 
-    if (!isSelf) {
-      ["trainingStartDate", "trainingEndDate", "trainingStatus", "trainingProgress"].forEach((field) =>
-        allowedFields.add(field)
-      );
+    if (isSelf) {
+      ["name", "photoUrl", "skills", "githubUrl", "linkedinUrl"].forEach((field) => allowedFields.add(field));
+    }
+
+    if (isDeveloperTarget) {
+      [
+        "name",
+        "department",
+        "photoUrl",
+        "trainingStartDate",
+        "trainingEndDate",
+        "trainingStatus",
+        "trainingProgress",
+        "skills",
+        "githubUrl",
+        "linkedinUrl",
+        "internalNotes",
+      ].forEach((field) => allowedFields.add(field));
     }
 
     return allowedFields;
@@ -214,6 +240,100 @@ const buildAllowedFieldSet = (viewer: AuthRequest["user"], targetUserId: string)
   }
 
   return allowedFields;
+};
+
+export const uploadProfilePhoto = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const targetUserId = req.params.id || req.user.id;
+    const payload = req.body as Record<string, unknown>;
+    const fileName = typeof payload.fileName === "string" ? payload.fileName.trim() : "";
+    const mimeType = typeof payload.mimeType === "string" ? payload.mimeType.trim() : "";
+    const rawContent = typeof payload.contentBase64 === "string" ? payload.contentBase64.trim() : "";
+
+    if (!fileName || !mimeType || !rawContent) {
+      return res.status(400).json({ message: "File name, mime type, and content are required" });
+    }
+
+    const extension = profilePhotoMimeTypes[mimeType];
+
+    if (!extension) {
+      return res.status(400).json({ message: "Only JPG, PNG, WEBP, and GIF profile photos are supported" });
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, isActive: true, role: true },
+    });
+
+    if (!existingUser || !existingUser.isActive) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    const allowedFields = buildAllowedFieldSet(req.user, targetUserId, existingUser.role);
+
+    if (!allowedFields.has("photoUrl")) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const contentBase64 = rawContent.includes(",") ? rawContent.split(",").pop()?.trim() || "" : rawContent;
+
+    let fileBuffer: Buffer;
+
+    try {
+      fileBuffer = Buffer.from(contentBase64, "base64");
+    } catch {
+      return res.status(400).json({ message: "Invalid image content" });
+    }
+
+    if (!fileBuffer.length) {
+      return res.status(400).json({ message: "Invalid image content" });
+    }
+
+    if (fileBuffer.length > maxProfilePhotoSizeBytes) {
+      return res.status(400).json({ message: "Profile photo must be 5 MB or smaller" });
+    }
+
+    const uploadsDirectory = path.resolve(process.cwd(), "uploads", "profile-photos");
+    await fs.mkdir(uploadsDirectory, { recursive: true });
+
+    const storedFileName = `${targetUserId}-${randomUUID()}.${extension}`;
+    const filePath = path.join(uploadsDirectory, storedFileName);
+
+    await fs.writeFile(filePath, fileBuffer);
+
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const photoUrl = `${origin}/uploads/profile-photos/${storedFileName}`;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: targetUserId },
+      data: { photoUrl },
+      select: getProfileSelect(req.user),
+    });
+
+    await createAuditLog(
+      "PROFILE_PHOTO_UPLOADED",
+      req.user.id,
+      targetUserId,
+      {
+        fileName,
+        mimeType,
+      },
+      "User"
+    );
+
+    return res.json({
+      message: "Profile photo uploaded",
+      photoUrl,
+      user: {
+        ...updatedUser,
+        trainingProgress: updatedUser.trainingProgress ?? 0,
+      },
+    });
+  } catch {
+    return res.status(500).json({ message: "Unable to upload profile photo" });
+  }
 };
 
 export const setupProfile = async (req: AuthRequest, res: Response) => {
@@ -321,6 +441,78 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const updateTrainingStatus = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const payload = req.body as Record<string, unknown>;
+    const id = typeof payload.id === "string" ? payload.id : req.user.id;
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, isActive: true, role: true },
+    });
+
+    if (!existingUser || !existingUser.isActive) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    const isHr = req.user.role === Role.HR;
+    const isTeamLead = req.user.role === Role.TEAM_LEAD;
+    const isDeveloperTarget = isDeveloper(existingUser.role);
+
+    if (!isHr && !(isTeamLead && isDeveloperTarget)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    if (payload.trainingStatus !== undefined && !trainingStatuses.includes(payload.trainingStatus as TrainingStatus)) {
+      return res.status(400).json({ message: "Invalid training status" });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: {
+        trainingStatus: payload.trainingStatus as TrainingStatus | undefined,
+        trainingProgress: parseTrainingProgress(payload.trainingProgress),
+        trainingStartDate: parseOptionalDate(payload.trainingStartDate, "Training start date"),
+        trainingEndDate: parseOptionalDate(payload.trainingEndDate, "Training end date"),
+      },
+      select: getProfileSelect(req.user),
+    });
+
+    if (
+      payload.trainingStatus !== undefined ||
+      payload.trainingStartDate !== undefined ||
+      payload.trainingEndDate !== undefined
+    ) {
+      await createNotification(id, "Training status changed", NotificationType.TRAINING_STATUS_CHANGED);
+    }
+
+    await createAuditLog(
+      "PROFILE_UPDATED",
+      req.user.id,
+      id,
+      {
+        fields: ["trainingStatus", "trainingProgress", "trainingStartDate", "trainingEndDate"].filter(
+          (field) => payload[field] !== undefined
+        ),
+      },
+      "User"
+    );
+
+    return res.json({
+      message: "Training progress updated",
+      user: {
+        ...updatedUser,
+        trainingProgress: updatedUser.trainingProgress ?? 0,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error updating training progress";
+    return res.status(message.includes("must be") || message.includes("between 0 and 100") ? 400 : 500).json({ message });
+  }
+};
+
 export const updateProfile = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) return res.status(401).json({ message: "Unauthorized" });
@@ -330,14 +522,14 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
 
     const existingUser = await prisma.user.findUnique({
       where: { id },
-      select: { id: true, isActive: true },
+      select: { id: true, isActive: true, role: true },
     });
 
     if (!existingUser || !existingUser.isActive) {
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    const allowedFields = buildAllowedFieldSet(req.user, id);
+    const allowedFields = buildAllowedFieldSet(req.user, id, existingUser.role);
     const fieldValidation = validateRequestedFields(payload, allowedFields);
 
     if (fieldValidation) {

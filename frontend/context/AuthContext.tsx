@@ -16,7 +16,17 @@ type AuthContextValue = {
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUserState] = useState<UserProfile | null>(() => readStoredUser());
+  const [user, setUserState] = useState<UserProfile | null>(() => {
+    const token = readAuthToken();
+    const cachedUser = readStoredUser();
+
+    if (!token) {
+      storeUser(null);
+      return null;
+    }
+
+    return cachedUser;
+  });
   const [loading, setLoading] = useState(true);
 
   const setUser = (nextUser: UserProfile | null) => {
@@ -29,9 +39,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const token = readAuthToken();
 
     if (!token) {
-      setUser(cachedUser);
+      setUser(null);
       setLoading(false);
-      return cachedUser;
+      return null;
     }
 
     setLoading(true);
