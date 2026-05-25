@@ -46,9 +46,9 @@ type VerifyGoogleAuthenticatorResponse = {
 
 type LoginStep = 1 | 2 | 3;
 
-export default function LoginPage() {
-  const router = useRouter();
-  const { fetchUser, setUser, user, loading: authLoading } = useAuth();
+export default function LoginPage() { // If user is already authenticated, redirect to dashboard
+  const router = useRouter();  // Get auth context
+  const { fetchUser, setUser, user, loading: authLoading } = useAuth(); // Local state for form inputs and flow control
 
   const [email, setEmail] = useState("");
   const [loginEmail, setLoginEmail] = useState("");

@@ -2,7 +2,7 @@ import axios from "axios";
 import { readAuthToken } from "@/lib/auth-storage";
 
 const api = axios.create({
-  baseURL: "http://localhost:4000/api",
+  baseURL: "/api",
   timeout: 5000,
 });
 
